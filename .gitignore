@@ -1,0 +1,13 @@
+data/galaxy_*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# --- IDEs ---
+.DS_Store
+.vscode/
