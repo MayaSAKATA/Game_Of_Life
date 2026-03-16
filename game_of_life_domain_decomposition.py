@@ -20,9 +20,19 @@ et inversement, et de même les cellules les plus en haut ont pour voisines les 
 et inversement.
 
 On itère ensuite pour étudier la façon dont évolue la population des cellules sur la grille.
+
+################
+Parallélisation du code game_of_life.py
+
 """
 import pygame  as pg
 import numpy   as np
+from mpi4py import MPI
+
+globCom = MPI.COMM_WORLD.Dup()
+nbp     = globCom.size
+rank    = globCom.rank
+name    = MPI.Get_processor_name()
 
 
 class Grille:
@@ -172,12 +182,21 @@ if __name__ == '__main__':
     while mustContinue:
         #time.sleep(0.5) # A régler ou commenter pour vitesse maxi
         t1 = time.time()
-        diff = grid.compute_next_iteration()
-        t2 = time.time()
-        appli.draw()
-        t3 = time.time()
+        if rank == 0:
+            diff = grid.compute_next_iteration()
+            globCom.send(diff, dest=1, tag=11)
+            t2 = time.time()
+        if rank == 1 :
+            diff = globCom.recv(source=0, tag=11)
+            nx = grid.dimensions[1]
+            for d in diff:
+                i = d//nx
+                j = d%nx
+                grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
+            appli.draw()
+            t3 = time.time()
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 mustContinue = False
-        print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
+        #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
     pg.quit()
