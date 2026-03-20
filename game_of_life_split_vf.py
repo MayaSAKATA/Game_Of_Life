@@ -177,11 +177,14 @@ if __name__ == '__main__':
     import time
     import sys
 
-    # on spit en 2 : le rank 0 calcule les prochaines générations, les autres affichent la grille à l'écran
-    if rank == 0 : 
+    # on split en 2 : le rank 0 calcule les prochaines générations, les autres affichent la grille à l'écran
+    if rank == 0 : # calcule
         color = 0 
-    else: 
+    elif rank == 1 : #affiche
         color = 1 
+    else : # les autres processus ne font rien
+        color = 2
+
     # color = 0 if rank == 0 else 1
     subCom = globCom.Split(color, rank)
     #print(f'subCom {subCom.Get_name()} contains {subCom.size} ranks') # ça marche pas
@@ -233,11 +236,17 @@ if __name__ == '__main__':
         #time.sleep(0.5) # A régler ou commenter pour vitesse maxi
         t1 = time.time()
         if color == 0:
+            t_calc_start = time.time()
             diff = grid.compute_next_iteration()
-            for r in range(1, nbp):
-                globCom.send(diff, dest=r, tag=11)
+            t_calc_end = time.time()
+            #for r in range(1, nbp):
+            if nbp > 1:
+                globCom.send(diff, dest=1, tag=11)
             # time.sleep(0.02)
-        else :
+            print(f"[Rank 0] Temps calcul : {t_calc_end - t_calc_start:2.2e} secondes")
+
+        if color == 1:
+            t_disp_start = time.time()
             diff = globCom.recv(source=0, tag=11)
             nx = grid.dimensions[1]
             for d in diff:
@@ -245,9 +254,10 @@ if __name__ == '__main__':
                 j = d%nx
                 grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
             appli.draw()
-            t3 = time.time()
+            t_disp_end = time.time()
+            print(f"[Rank {rank}] Temps affichage : {t_disp_end - t_disp_start:2.2e} secondes")
+            
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 mustContinue = False
-        #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
     pg.quit()
