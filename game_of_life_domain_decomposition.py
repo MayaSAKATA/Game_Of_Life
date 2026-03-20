@@ -53,6 +53,7 @@ class Grille:
         self.dimensions_local = (dim[0]//nbp, dim[1]) # On suppose que le nombre de processus divise le nombre de lignes de la grille
         self.cells = np.empty((self.dimensions_local[0]+2, self.dimensions_local[1]), dtype=np.uint8) # +2 pour prendre les ghost cells en dessous et au dessus
         if init_pattern is not None:
+            self.cells[:, :] = 0 # On initialise la grille à 0 (toutes les cellules mortes)
             self.fill_with_pattern(init_pattern)
         else:
             self.cells[1:self.dimensions_local[0]+1,:] = np.random.randint(2, size=self.dimensions_local, dtype=np.uint8) # On remplit la partie centrale de la grille (sans les ghost cells) avec des 0 ou des 1 tirés au hasard
@@ -83,11 +84,12 @@ class Grille:
         #             à gauche de la grille !
         ny = self.dimensions_local[0]
         nx = self.dimensions_global[1] # dimensions_global[1]=dimensions_local[1] chaque ligne reste de la même longueur pour tous les processus
-        next_cells = np.empty(self.dimensions_local, dtype=np.uint8)
+        #next_cells = np.empty(self.dimensions_local, dtype=np.uint8)
+        next_cells = np.empty((ny+2,nx), dtype=np.uint8) # +2 pour les ghost cells
         diff_cells = []
         for i in range(1, ny+1):
-            i_above = (i+ny-1)%ny
-            i_below = (i+1)%ny
+            i_above = i-1  #(i+ny-1)%ny
+            i_below = i+1  #(i+1)%ny
             for j in range(nx):
                 j_left = (j-1+nx)%nx
                 j_right= (j+1)%nx
@@ -106,9 +108,9 @@ class Grille:
                     diff_cells.append(i*nx+j)
                 else:
                     next_cells[i,j] = 0         # Morte, elle reste morte.
-        self.cells = next_cells
-        #return diff_cells
-        return None
+        self.cells[1:ny+1, :] = next_cells[1:ny+1, :]  # on remplace juste les lignes réelles et pas les ghosts cells
+        return diff_cells
+        #return None
 
 
     def sync_ghosts_cells(self):
@@ -121,20 +123,20 @@ class Grille:
         # Vers le haut
         if rank%2 == 0 : # Processus pairs, on fait d'abord les échanges dans un sens, puis dans l'autre pour éviter les interblocages
             globCom.Send(self.cells[1,:], dest=voisin_haut) # On envoie la première ligne de la partie centrale de la grille (sans les ghost cells) au voisin du haut
-            globCom.Recv(dest=self.cells[self.dimensions_local[0]+1,:], source=voisin_bas) # On reçoit la ligne de bordure du voisin du bas et on la stocke dans la ghost cell du bas (la dernière ligne de self.cells)
+            globCom.Recv(self.cells[self.dimensions_local[0]+1,:], source=voisin_bas) # On reçoit la ligne de bordure du voisin du bas et on la stocke dans la ghost cell du bas (la dernière ligne de self.cells)
 
         else : # processus impairs
-            globCom.Recv(dest=self.cells[self.dimensions_local[0]+1,:], source=voisin_bas)
+            globCom.Recv(self.cells[self.dimensions_local[0]+1,:], source=voisin_bas)
             globCom.Send(self.cells[1,:], dest=voisin_haut)
 
 
         # Vers le bas
         if rank%2 == 0 : # Processus pairs, on fait d'abord les échanges dans un sens, puis dans l'autre pour éviter les interblocages
             globCom.Send(self.cells[self.dimensions_local[0],:], dest=voisin_bas) # On envoie la dernière ligne de la partie centrale de la grille (sans les ghost cells) au voisin du bas
-            globCom.Recv(dest=self.cells[0,:], source=voisin_haut) # On reçoit la ligne de bordure du voisin du haut et on la stocke dans la ghost cell du haut (la première ligne de self.cells)   
+            globCom.Recv(self.cells[0,:], source=voisin_haut) # On reçoit la ligne de bordure du voisin du haut et on la stocke dans la ghost cell du haut (la première ligne de self.cells)   
 
         else : # processus impairs
-            globCom.Recv(dest=self.cells[0,:], source=voisin_haut)
+            globCom.Recv(self.cells[0,:], source=voisin_haut)
             globCom.Send(self.cells[self.dimensions_local[0],:], dest=voisin_bas)
 
 
@@ -176,12 +178,19 @@ class App:
         else:
             return self.grid.col_life
 
-    def draw(self):
-        [self.screen.fill(self.compute_color(i,j),self.compute_rectangle(i,j)) for i in range(self.grid.dimensions_global[0]) for j in range(self.grid.dimensions_global[1])]
-        if (self.draw_color is not None):
-            [pg.draw.line(self.screen, self.draw_color, (0,i*self.size_y), (self.width,i*self.size_y)) for i in range(self.grid.dimensions_global[0])]
-            [pg.draw.line(self.screen, self.draw_color, (j*self.size_x,0), (j*self.size_x,self.height)) for j in range(self.grid.dimensions_global[1])]
+
+    def draw(self, global_cells):
+        for i in range(self.grid.dimensions_global[0]):
+            for j in range(self.grid.dimensions_global[1]):
+                color = self.grid.col_life if global_cells[i, j] else self.grid.col_dead
+                self.screen.fill(color, self.compute_rectangle(i, j))
+        if self.draw_color is not None:
+            for i in range(self.grid.dimensions_global[0]):
+                pg.draw.line(self.screen, self.draw_color, (0, i*self.size_y), (self.width, i*self.size_y))
+            for j in range(self.grid.dimensions_global[1]):
+                pg.draw.line(self.screen, self.draw_color, (j*self.size_x, 0), (j*self.size_x, self.height))
         pg.display.update()
+
 
 
 if __name__ == '__main__':
@@ -226,30 +235,38 @@ if __name__ == '__main__':
     grid = Grille(dim=dim_global, init_pattern=init_coord)
     
 
-    # if rank == 0 :
-    #     pg.init()
-    #     appli = App((resx, resy), grid)
+    if rank == 0 :
+        pg.init()
+        appli = App((resx, resy), grid)
     
     mustContinue = True
     while mustContinue:
         #time.sleep(0.5) # A régler ou commenter pour vitesse maxi
         t1 = time.time()
+        grid.sync_ghosts_cells() # synchronisation des ghost cells avant de calculer la prochaine génération
+        grid.compute_next_iteration() # calcul de la prochaine génération
+
+        # reconstruction grille globale
+        local_block = grid.cells[1:grid.dimensions_local[0]+1,:] # partie centrale de la grille sans les ghost cells
+        local_flat = local_block.flatten() # on aplatit le bloc local pour pouvoir l'envoyer avec globCom
+
+        recvbuff = None
         if rank == 0:
-            diff = grid.compute_next_iteration()
-            globCom.send(diff, dest=1, tag=11)
+            recvbuff = np.empty(dim_global[0] * dim_global[1], dtype=np.uint8)
+
+        globCom.Gather(local_flat, recvbuff, root=0) # rassemblement de tous les blocs locaux dans recvbuff sur le processus 0
+
+        if rank == 0:
+            global_grid = recvbuff.reshape(dim_global)
+            appli.draw(global_grid)
             t2 = time.time()
-        if rank == 1 :
-            diff = globCom.recv(source=0, tag=11)
-            nx = grid.dimensions_global[1]
-            for d in diff:
-                i = d//nx
-                j = d%nx
-                grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
-            appli.draw()
-            t3 = time.time()
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                mustContinue = False
-        #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
+
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    mustContinue = False
+
+            print(f"Duree d'une iteration : {t2-t1:2.2e} secondes")
     pg.quit()
+
+
 
