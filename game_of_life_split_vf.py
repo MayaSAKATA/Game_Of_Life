@@ -21,7 +21,7 @@ et inversement.
 
 On itère ensuite pour étudier la façon dont évolue la population des cellules sur la grille.
 
-Pour lancer le programme avec 4 processus : mpiexec -n 4 python3 game_of_life_split.py
+Pour lancer le programme avec 4 processus : mpiexec -n 4 python3 game_of_life_split_vf.py
 """
 import pygame  as pg
 import numpy   as np
@@ -185,11 +185,10 @@ if __name__ == '__main__':
     else : # les autres processus ne font rien
         color = 2
 
-    # color = 0 if rank == 0 else 1
     subCom = globCom.Split(color, rank)
-    #print(f'subCom {subCom.Get_name()} contains {subCom.size} ranks') # ça marche pas
 
     pg.init()
+    
     dico_patterns = { # Dimension et pattern dans un tuple
         'blinker' : ((5,5),[(2,1),(2,2),(2,3)]),
         'toad'    : ((6,6),[(2,2),(2,3),(2,4),(3,3),(3,4),(3,5)]),
@@ -227,7 +226,6 @@ if __name__ == '__main__':
     
     # Seuls ceux qui affichent (color == 1) créent la fenêtre
     if color == 1:
-        pg.init()
         appli = App((resx, resy), grid)
         appli.draw() #changement pour eviter que le premier dessin reste afficher tout le temps 
 
@@ -239,11 +237,11 @@ if __name__ == '__main__':
             t_calc_start = time.time()
             diff = grid.compute_next_iteration()
             t_calc_end = time.time()
-            #for r in range(1, nbp):
             if nbp > 1:
                 globCom.send(diff, dest=1, tag=11)
+                t_disp = globCom.recv(source=1, tag=22)  # attendre que l'affichage soit terminé ET récupérer le temps d'affichage
+            print(f"[Rank 0] Calcul : {t_calc_end - t_calc_start:2.2e}s | Affichage : {t_disp:2.2e}s") # que le rang 0 qui écrit dans le terminal
             # time.sleep(0.02)
-            print(f"[Rank 0] Temps calcul : {t_calc_end - t_calc_start:2.2e} secondes")
 
         if color == 1:
             t_disp_start = time.time()
@@ -255,7 +253,7 @@ if __name__ == '__main__':
                 grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
             appli.draw()
             t_disp_end = time.time()
-            print(f"[Rank {rank}] Temps affichage : {t_disp_end - t_disp_start:2.2e} secondes")
+            globCom.send(t_disp_end - t_disp_start, dest=0, tag=22) # affichage terminé et renvoyer le temps d'affichage
             
         for event in pg.event.get():
             if event.type == pg.QUIT:
