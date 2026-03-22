@@ -228,7 +228,12 @@ if __name__ == '__main__':
         appli = App((resx, resy), grid)
     
     mustContinue = True
+    N_ITER_BENCHMARK = 200
+    iter_count = 0
     while mustContinue:
+        iter_count += 1
+        if iter_count >= N_ITER_BENCHMARK:
+            break
         t1 = time.time()
         grid.sync_ghosts_cells() # synchronisation des ghost cells avant de calculer la prochaine génération
         grid.compute_next_iteration() # calcul de la prochaine génération
@@ -256,5 +261,5 @@ if __name__ == '__main__':
                 if event.type == pg.QUIT:
                     mustContinue = False
         
-        mustContinue = globCom.bcast(mustContinue, root=0) # communication globale de l'arrêt (fermeture fenêtre d'affichage)
+        #mustContinue = globCom.bcast(mustContinue, root=0) # communication globale de l'arrêt (fermeture fenêtre d'affichage)
     pg.quit()
