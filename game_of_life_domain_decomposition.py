@@ -21,6 +21,9 @@ et inversement.
 
 On itère ensuite pour étudier la façon dont évolue la population des cellules sur la grille.
 
+Pour lancer le programme avec 4 processus : mpiexec -n 4 python3 game_of_life_domain_decomposition.py
+
+
 ################
 Parallélisation du code game_of_life.py
 
@@ -33,7 +36,6 @@ globCom = MPI.COMM_WORLD.Dup()
 nbp     = globCom.size
 rank    = globCom.rank
 name    = MPI.Get_processor_name()
-
 
 class Grille:
     """
@@ -72,9 +74,6 @@ class Grille:
             if start_row <= i < end_row :
                 self.cells[i -start_row + 1, j] = 1  
 
-
-
-
     def compute_next_iteration(self):
         """
         Calcule la prochaine génération de cellules en suivant les règles du jeu de la vie
@@ -110,8 +109,6 @@ class Grille:
                     next_cells[i,j] = 0         # Morte, elle reste morte.
         self.cells[1:ny+1, :] = next_cells[1:ny+1, :]  # on remplace juste les lignes réelles et pas les ghosts cells
         return diff_cells
-        #return None
-
 
     def sync_ghosts_cells(self):
         """
@@ -129,7 +126,6 @@ class Grille:
             globCom.Recv(self.cells[self.dimensions_local[0]+1,:], source=voisin_bas)
             globCom.Send(self.cells[1,:], dest=voisin_haut)
 
-
         # Vers le bas
         if rank%2 == 0 : # Processus pairs, on fait d'abord les échanges dans un sens, puis dans l'autre pour éviter les interblocages
             globCom.Send(self.cells[self.dimensions_local[0],:], dest=voisin_bas) # On envoie la dernière ligne de la partie centrale de la grille (sans les ghost cells) au voisin du bas
@@ -138,10 +134,6 @@ class Grille:
         else : # processus impairs
             globCom.Recv(self.cells[0,:], source=voisin_haut)
             globCom.Send(self.cells[self.dimensions_local[0],:], dest=voisin_bas)
-
-
-
-
 
 class App:
     """
@@ -178,7 +170,6 @@ class App:
         else:
             return self.grid.col_life
 
-
     def draw(self, global_cells):
         for i in range(self.grid.dimensions_global[0]):
             for j in range(self.grid.dimensions_global[1]):
@@ -191,13 +182,10 @@ class App:
                 pg.draw.line(self.screen, self.draw_color, (j*self.size_x, 0), (j*self.size_x, self.height))
         pg.display.update()
 
-
-
 if __name__ == '__main__':
     import time
     import sys
 
-    pg.init()
     dico_patterns = { # Dimension et pattern dans un tuple
         'blinker' : ((5,5),[(2,1),(2,2),(2,3)]),
         'toad'    : ((6,6),[(2,2),(2,3),(2,4),(3,3),(3,4),(3,5)]),
@@ -222,8 +210,9 @@ if __name__ == '__main__':
     if len(sys.argv) > 3 :
         resx = int(sys.argv[2])
         resy = int(sys.argv[3])
-    print(f"Pattern initial choisi : {choice}")
-    print(f"resolution ecran : {resx,resy}")
+    if rank == 0:
+        print(f"\nPattern initial choisi : {choice}")
+        print(f"resolution ecran : {resx,resy}\n")
     try:
         init_pattern = dico_patterns[choice]
     except KeyError:
@@ -233,7 +222,6 @@ if __name__ == '__main__':
     dim_global = init_pattern[0]
     init_coord = init_pattern[1]
     grid = Grille(dim=dim_global, init_pattern=init_coord)
-    
 
     if rank == 0 :
         pg.init()
@@ -266,7 +254,6 @@ if __name__ == '__main__':
                     mustContinue = False
 
             print(f"Duree d'une iteration : {t2-t1:2.2e} secondes")
+
+        mustContinue = globCom.bcast(mustContinue, root=0) # communication globale de l'arrêt (x fenêtre d'affichage)
     pg.quit()
-
-
-
