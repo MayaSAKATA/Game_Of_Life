@@ -229,7 +229,6 @@ if __name__ == '__main__':
     
     mustContinue = True
     while mustContinue:
-        #time.sleep(0.5) # A régler ou commenter pour vitesse maxi
         t1 = time.time()
         grid.sync_ghosts_cells() # synchronisation des ghost cells avant de calculer la prochaine génération
         grid.compute_next_iteration() # calcul de la prochaine génération
@@ -246,14 +245,16 @@ if __name__ == '__main__':
 
         if rank == 0:
             global_grid = recvbuff.reshape(dim_global)
+
+            t_disp_start = time.time()
             appli.draw(global_grid)
-            t2 = time.time()
+            t_disp = time.time() - t_disp_start
+            t_total = time.time() - t1
+            print(f"[Rank 0] Total iter : {t_total:2.2e}s | Affichage : {t_disp:2.2e}s")
 
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     mustContinue = False
-
-            print(f"Duree d'une iteration : {t2-t1:2.2e} secondes")
-
-        mustContinue = globCom.bcast(mustContinue, root=0) # communication globale de l'arrêt (x fenêtre d'affichage)
+        
+        mustContinue = globCom.bcast(mustContinue, root=0) # communication globale de l'arrêt (fermeture fenêtre d'affichage)
     pg.quit()
