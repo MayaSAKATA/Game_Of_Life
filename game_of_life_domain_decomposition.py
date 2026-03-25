@@ -68,7 +68,7 @@ class Grille:
         Rempli la grille avec le pattern donné en argument, en tenant compte du rang du processus pour ne remplir que la partie de la grille qui lui est attribuée
         """
         start_row = self.dimensions_local[0]*rank
-        end_row   = self.dimensions_local[0]*(rank+1) # chaque processus prend une seule ligne  
+        end_row   = self.dimensions_local[0]*(rank+1) # Chaque processus prend une seule ligne  
 
         for (i,j) in init_pattern:
             if start_row <= i < end_row :
@@ -79,8 +79,7 @@ class Grille:
         Calcule la prochaine génération de cellules en suivant les règles du jeu de la vie
         """
         # Remarque 1: on pourrait optimiser en faisant du vectoriel, mais pour plus de clarté, on utilise les boucles
-        # Remarque 2: on voit la grille plus comme une matrice qu'une grille géométrique. L'indice (0,0) est donc en bas
-        #             à gauche de la grille !
+        # Remarque 2: on voit la grille plus comme une matrice qu'une grille géométrique. L'indice (0,0) est donc en bas à gauche de la grille !
         ny = self.dimensions_local[0]
         nx = self.dimensions_global[1] # dimensions_global[1]=dimensions_local[1] chaque ligne reste de la même longueur pour tous les processus
         #next_cells = np.empty(self.dimensions_local, dtype=np.uint8)
@@ -103,11 +102,11 @@ class Grille:
                     else:
                         next_cells[i,j] = 1 # Sinon elle reste vivante
                 elif nb_voisines_vivantes == 3: # Cas où cellule morte mais entourée exactement de trois vivantes
-                    next_cells[i,j] = 1         # Naissance de la cellule
+                    next_cells[i,j] = 1 # Naissance de la cellule
                     diff_cells.append(i*nx+j)
                 else:
-                    next_cells[i,j] = 0         # Morte, elle reste morte.
-        self.cells[1:ny+1, :] = next_cells[1:ny+1, :]  # on remplace juste les lignes réelles et pas les ghosts cells
+                    next_cells[i,j] = 0 # Morte, elle reste morte.
+        self.cells[1:ny+1, :] = next_cells[1:ny+1, :]  # On remplace juste les lignes réelles et pas les ghosts cells
         return diff_cells
 
     def sync_ghosts_cells(self):
@@ -122,7 +121,7 @@ class Grille:
             globCom.Send(self.cells[1,:], dest=voisin_haut) # On envoie la première ligne de la partie centrale de la grille (sans les ghost cells) au voisin du haut
             globCom.Recv(self.cells[self.dimensions_local[0]+1,:], source=voisin_bas) # On reçoit la ligne de bordure du voisin du bas et on la stocke dans la ghost cell du bas (la dernière ligne de self.cells)
 
-        else : # processus impairs
+        else : # Processus impairs
             globCom.Recv(self.cells[self.dimensions_local[0]+1,:], source=voisin_bas)
             globCom.Send(self.cells[1,:], dest=voisin_haut)
 
@@ -131,7 +130,7 @@ class Grille:
             globCom.Send(self.cells[self.dimensions_local[0],:], dest=voisin_bas) # On envoie la dernière ligne de la partie centrale de la grille (sans les ghost cells) au voisin du bas
             globCom.Recv(self.cells[0,:], source=voisin_haut) # On reçoit la ligne de bordure du voisin du haut et on la stocke dans la ghost cell du haut (la première ligne de self.cells)   
 
-        else : # processus impairs
+        else : # Processus impairs
             globCom.Recv(self.cells[0,:], source=voisin_haut)
             globCom.Send(self.cells[self.dimensions_local[0],:], dest=voisin_bas)
 
@@ -155,7 +154,6 @@ class App:
         self.height= grid.dimensions_global[0] * self.size_y
         # Création de la fenêtre à l'aide de tkinter
         self.screen = pg.display.set_mode((self.width,self.height))
-        #
         self.canvas_cells = []
 
     def compute_rectangle(self, i: int, j: int):
@@ -235,18 +233,18 @@ if __name__ == '__main__':
         if iter_count >= N_ITER_BENCHMARK:
             break
         t1 = time.time()
-        grid.sync_ghosts_cells() # synchronisation des ghost cells avant de calculer la prochaine génération
-        grid.compute_next_iteration() # calcul de la prochaine génération
+        grid.sync_ghosts_cells() # Synchronisation des ghost cells avant de calculer la prochaine génération
+        grid.compute_next_iteration() # Calcul de la prochaine génération
 
-        # reconstruction grille globale
-        local_block = grid.cells[1:grid.dimensions_local[0]+1,:] # partie centrale de la grille sans les ghost cells
-        local_flat = local_block.flatten() # on aplatit le bloc local pour pouvoir l'envoyer avec globCom
+        # Reconstruction grille globale
+        local_block = grid.cells[1:grid.dimensions_local[0]+1,:] # Partie centrale de la grille sans les ghost cells
+        local_flat = local_block.flatten() # On aplatit le bloc local pour pouvoir l'envoyer avec globCom
 
         recvbuff = None
         if rank == 0:
             recvbuff = np.empty(dim_global[0] * dim_global[1], dtype=np.uint8)
 
-        globCom.Gather(local_flat, recvbuff, root=0) # rassemblement de tous les blocs locaux dans recvbuff sur le processus 0
+        globCom.Gather(local_flat, recvbuff, root=0) # Rassemblement de tous les blocs locaux dans recvbuff sur le processus 0
 
         if rank == 0:
             global_grid = recvbuff.reshape(dim_global)
