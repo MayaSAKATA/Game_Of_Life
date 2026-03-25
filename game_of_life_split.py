@@ -83,8 +83,7 @@ class Grille:
         Calcule la prochaine génération de cellules en suivant les règles du jeu de la vie
         """
         # Remarque 1: on pourrait optimiser en faisant du vectoriel, mais pour plus de clarté, on utilise les boucles
-        # Remarque 2: on voit la grille plus comme une matrice qu'une grille géométrique. L'indice (0,0) est donc en bas
-        #             à gauche de la grille !
+        # Remarque 2: on voit la grille plus comme une matrice qu'une grille géométrique. L'indice (0,0) est donc en bas à gauche de la grille !
         ny = self.dimensions[0]
         nx = self.dimensions[1]
         next_cells = np.empty(self.dimensions, dtype=np.uint8)
@@ -116,13 +115,12 @@ class Grille:
                     else:
                         next_cells[i,j] = 1 # Sinon elle reste vivante
                 elif nb_voisines_vivantes == 3: # Cas où cellule morte mais entourée exactement de trois vivantes
-                    next_cells[i,j] = 1         # Naissance de la cellule
+                    next_cells[i,j] = 1 # Naissance de la cellule
                     diff_cells.append(i*nx+j)
                 else:
-                    next_cells[i,j] = 0         # Morte, elle reste morte.
+                    next_cells[i,j] = 0 # Morte, elle reste morte.
         self.cells = next_cells
         return diff_cells
-
 
 class App:
     """
@@ -177,17 +175,13 @@ if __name__ == '__main__':
     import time
     import sys
 
-    # on split en 2 : le rank 0 calcule les prochaines générations, les autres affichent la grille à l'écran
-    if rank == 0 : # calcule
+    # On split en 2 : le rank 0 calcule les prochaines générations, les autres affichent la grille à l'écran
+    if rank == 0 : # Calcule
         color = 0 
-    elif rank == 1 : #affiche
+    elif rank > 0 : # Affiche
         color = 1 
-    else : # les autres processus ne font rien
-        color = 2
 
     subCom = globCom.Split(color, rank)
-
-    #pg.init()
     
     dico_patterns = { # Dimension et pattern dans un tuple
         'blinker' : ((5,5),[(2,1),(2,2),(2,3)]),
@@ -228,7 +222,7 @@ if __name__ == '__main__':
     if color == 1:
         pg.init()
         appli = App((resx, resy), grid)
-        appli.draw() #changement pour eviter que le premier dessin reste afficher tout le temps 
+        appli.draw()
 
     mustContinue = True
     while mustContinue:
@@ -239,8 +233,8 @@ if __name__ == '__main__':
             t_calc_end = time.time()
             if nbp > 1:
                 globCom.send(diff, dest=1, tag=11)
-                t_disp = globCom.recv(source=1, tag=22)  # attendre que l'affichage soit terminé ET récupérer le temps d'affichage
-            print(f"[Rank 0] Calcul : {t_calc_end - t_calc_start:2.2e}s | Affichage : {t_disp:2.2e}s") # que le rang 0 qui écrit dans le terminal
+                t_disp = globCom.recv(source=1, tag=22)  # Attendre que l'affichage soit terminé ET récupérer le temps d'affichage
+            print(f"[Rank 0] Calcul : {t_calc_end - t_calc_start:2.2e}s | Affichage : {t_disp:2.2e}s") # Uniquement le rang 0 qui écrit dans le terminal
 
         if color == 1:
             for event in pg.event.get():
@@ -256,6 +250,6 @@ if __name__ == '__main__':
                 grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
             appli.draw()
             t_disp_end = time.time()
-            globCom.send(t_disp_end - t_disp_start, dest=0, tag=22) # affichage terminé et renvoyer le temps d'affichage
+            globCom.send(t_disp_end - t_disp_start, dest=0, tag=22) # Affichage terminé et renvoyer le temps d'affichage
         
     pg.quit()
