@@ -21,6 +21,9 @@ et inversement.
 
 On itère ensuite pour étudier la façon dont évolue la population des cellules sur la grille.
 
+Pour lancer le programme avec 4 processus : mpiexec -n 4 python3 game_of_life_domain_decomposition.py
+
+
 ################
 Parallélisation du code game_of_life.py
 
@@ -33,7 +36,6 @@ globCom = MPI.COMM_WORLD.Dup()
 nbp     = globCom.size
 rank    = globCom.rank
 name    = MPI.Get_processor_name()
-
 
 class Grille:
     """
@@ -49,16 +51,28 @@ class Grille:
     """
     def __init__(self, dim, init_pattern=None, color_life=pg.Color("black"), color_dead=pg.Color("white")):
         import random
-        self.dimensions = dim
+        self.dimensions_global= dim
+        self.dimensions_local = (dim[0]//nbp, dim[1]) # On suppose que le nombre de processus divise le nombre de lignes de la grille
+        self.cells = np.empty((self.dimensions_local[0]+2, self.dimensions_local[1]), dtype=np.uint8) # +2 pour prendre les ghost cells en dessous et au dessus
         if init_pattern is not None:
-            self.cells = np.zeros(self.dimensions, dtype=np.uint8)
-            indices_i = [v[0] for v in init_pattern]
-            indices_j = [v[1] for v in init_pattern]
-            self.cells[indices_i,indices_j] = 1
+            self.cells[:, :] = 0 # On initialise la grille à 0 (toutes les cellules mortes)
+            self.fill_with_pattern(init_pattern)
         else:
-            self.cells = np.random.randint(2, size=dim, dtype=np.uint8)
+            self.cells[1:self.dimensions_local[0]+1,:] = np.random.randint(2, size=self.dimensions_local, dtype=np.uint8) # On remplit la partie centrale de la grille (sans les ghost cells) avec des 0 ou des 1 tirés au hasard
         self.col_life = color_life
         self.col_dead = color_dead
+    
+
+    def fill_with_pattern(self, init_pattern):
+        """ 
+        Rempli la grille avec le pattern donné en argument, en tenant compte du rang du processus pour ne remplir que la partie de la grille qui lui est attribuée
+        """
+        start_row = self.dimensions_local[0]*rank
+        end_row   = self.dimensions_local[0]*(rank+1) # chaque processus prend une seule ligne  
+
+        for (i,j) in init_pattern:
+            if start_row <= i < end_row :
+                self.cells[i -start_row + 1, j] = 1  
 
     def compute_next_iteration(self):
         """
@@ -67,13 +81,14 @@ class Grille:
         # Remarque 1: on pourrait optimiser en faisant du vectoriel, mais pour plus de clarté, on utilise les boucles
         # Remarque 2: on voit la grille plus comme une matrice qu'une grille géométrique. L'indice (0,0) est donc en bas
         #             à gauche de la grille !
-        ny = self.dimensions[0]
-        nx = self.dimensions[1]
-        next_cells = np.empty(self.dimensions, dtype=np.uint8)
+        ny = self.dimensions_local[0]
+        nx = self.dimensions_global[1] # dimensions_global[1]=dimensions_local[1] chaque ligne reste de la même longueur pour tous les processus
+        #next_cells = np.empty(self.dimensions_local, dtype=np.uint8)
+        next_cells = np.empty((ny+2,nx), dtype=np.uint8) # +2 pour les ghost cells
         diff_cells = []
-        for i in range(ny):
-            i_above = (i+ny-1)%ny
-            i_below = (i+1)%ny
+        for i in range(1, ny+1):
+            i_above = i-1  #(i+ny-1)%ny
+            i_below = i+1  #(i+1)%ny
             for j in range(nx):
                 j_left = (j-1+nx)%nx
                 j_right= (j+1)%nx
@@ -92,9 +107,33 @@ class Grille:
                     diff_cells.append(i*nx+j)
                 else:
                     next_cells[i,j] = 0         # Morte, elle reste morte.
-        self.cells = next_cells
+        self.cells[1:ny+1, :] = next_cells[1:ny+1, :]  # on remplace juste les lignes réelles et pas les ghosts cells
         return diff_cells
 
+    def sync_ghosts_cells(self):
+        """
+        Synchronise les ghost cells de la grille en envoyant les lignes de bordure à l'aide de globCom
+        """
+        voisin_haut = (rank-1)%nbp
+        voisin_bas  = (rank+1)%nbp
+
+        # Vers le haut
+        if rank%2 == 0 : # Processus pairs, on fait d'abord les échanges dans un sens, puis dans l'autre pour éviter les interblocages
+            globCom.Send(self.cells[1,:], dest=voisin_haut) # On envoie la première ligne de la partie centrale de la grille (sans les ghost cells) au voisin du haut
+            globCom.Recv(self.cells[self.dimensions_local[0]+1,:], source=voisin_bas) # On reçoit la ligne de bordure du voisin du bas et on la stocke dans la ghost cell du bas (la dernière ligne de self.cells)
+
+        else : # processus impairs
+            globCom.Recv(self.cells[self.dimensions_local[0]+1,:], source=voisin_bas)
+            globCom.Send(self.cells[1,:], dest=voisin_haut)
+
+        # Vers le bas
+        if rank%2 == 0 : # Processus pairs, on fait d'abord les échanges dans un sens, puis dans l'autre pour éviter les interblocages
+            globCom.Send(self.cells[self.dimensions_local[0],:], dest=voisin_bas) # On envoie la dernière ligne de la partie centrale de la grille (sans les ghost cells) au voisin du bas
+            globCom.Recv(self.cells[0,:], source=voisin_haut) # On reçoit la ligne de bordure du voisin du haut et on la stocke dans la ghost cell du haut (la première ligne de self.cells)   
+
+        else : # processus impairs
+            globCom.Recv(self.cells[0,:], source=voisin_haut)
+            globCom.Send(self.cells[self.dimensions_local[0],:], dest=voisin_bas)
 
 class App:
     """
@@ -105,15 +144,15 @@ class App:
     def __init__(self, geometry, grid):
         self.grid = grid
         # Calcul de la taille d'une cellule par rapport à la taille de la fenêtre et de la grille à afficher :
-        self.size_x = geometry[1]//grid.dimensions[1]
-        self.size_y = geometry[0]//grid.dimensions[0]
+        self.size_x = geometry[1]//grid.dimensions_global[1]
+        self.size_y = geometry[0]//grid.dimensions_global[0]
         if self.size_x > 4 and self.size_y > 4 :
             self.draw_color=pg.Color('lightgrey')
         else:
             self.draw_color=None
         # Ajustement de la taille de la fenêtre pour bien fitter la dimension de la grille
-        self.width = grid.dimensions[1] * self.size_x
-        self.height= grid.dimensions[0] * self.size_y
+        self.width = grid.dimensions_global[1] * self.size_x
+        self.height= grid.dimensions_global[0] * self.size_y
         # Création de la fenêtre à l'aide de tkinter
         self.screen = pg.display.set_mode((self.width,self.height))
         #
@@ -131,19 +170,22 @@ class App:
         else:
             return self.grid.col_life
 
-    def draw(self):
-        [self.screen.fill(self.compute_color(i,j),self.compute_rectangle(i,j)) for i in range(self.grid.dimensions[0]) for j in range(self.grid.dimensions[1])]
-        if (self.draw_color is not None):
-            [pg.draw.line(self.screen, self.draw_color, (0,i*self.size_y), (self.width,i*self.size_y)) for i in range(self.grid.dimensions[0])]
-            [pg.draw.line(self.screen, self.draw_color, (j*self.size_x,0), (j*self.size_x,self.height)) for j in range(self.grid.dimensions[1])]
+    def draw(self, global_cells):
+        for i in range(self.grid.dimensions_global[0]):
+            for j in range(self.grid.dimensions_global[1]):
+                color = self.grid.col_life if global_cells[i, j] else self.grid.col_dead
+                self.screen.fill(color, self.compute_rectangle(i, j))
+        if self.draw_color is not None:
+            for i in range(self.grid.dimensions_global[0]):
+                pg.draw.line(self.screen, self.draw_color, (0, i*self.size_y), (self.width, i*self.size_y))
+            for j in range(self.grid.dimensions_global[1]):
+                pg.draw.line(self.screen, self.draw_color, (j*self.size_x, 0), (j*self.size_x, self.height))
         pg.display.update()
-
 
 if __name__ == '__main__':
     import time
     import sys
 
-    pg.init()
     dico_patterns = { # Dimension et pattern dans un tuple
         'blinker' : ((5,5),[(2,1),(2,2),(2,3)]),
         'toad'    : ((6,6),[(2,2),(2,3),(2,4),(3,3),(3,4),(3,5)]),
@@ -168,34 +210,56 @@ if __name__ == '__main__':
     if len(sys.argv) > 3 :
         resx = int(sys.argv[2])
         resy = int(sys.argv[3])
-    print(f"Pattern initial choisi : {choice}")
-    print(f"resolution ecran : {resx,resy}")
+    if rank == 0:
+        print(f"\nPattern initial choisi : {choice}")
+        print(f"resolution ecran : {resx,resy}\n")
     try:
         init_pattern = dico_patterns[choice]
     except KeyError:
         print("No such pattern. Available ones are:", dico_patterns.keys())
         exit(1)
-    grid = Grille(*init_pattern)
-    appli = App((resx, resy), grid)
+    
+    dim_global = init_pattern[0]
+    init_coord = init_pattern[1]
+    grid = Grille(dim=dim_global, init_pattern=init_coord)
 
+    if rank == 0 :
+        pg.init()
+        appli = App((resx, resy), grid)
+    
     mustContinue = True
+    N_ITER_BENCHMARK = 200
+    iter_count = 0
     while mustContinue:
+        iter_count += 1
+        if iter_count >= N_ITER_BENCHMARK:
+            break
         t1 = time.time()
+        grid.sync_ghosts_cells() # synchronisation des ghost cells avant de calculer la prochaine génération
+        grid.compute_next_iteration() # calcul de la prochaine génération
+
+        # reconstruction grille globale
+        local_block = grid.cells[1:grid.dimensions_local[0]+1,:] # partie centrale de la grille sans les ghost cells
+        local_flat = local_block.flatten() # on aplatit le bloc local pour pouvoir l'envoyer avec globCom
+
+        recvbuff = None
         if rank == 0:
-            diff = grid.compute_next_iteration()
-            globCom.send(diff, dest=1, tag=11)
-            t2 = time.time()
-        if rank == 1 :
-            diff = globCom.recv(source=0, tag=11)
-            nx = grid.dimensions[1]
-            for d in diff:
-                i = d//nx
-                j = d%nx
-                grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
-            appli.draw()
-            t3 = time.time()
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                mustContinue = False
-        #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
+            recvbuff = np.empty(dim_global[0] * dim_global[1], dtype=np.uint8)
+
+        globCom.Gather(local_flat, recvbuff, root=0) # rassemblement de tous les blocs locaux dans recvbuff sur le processus 0
+
+        if rank == 0:
+            global_grid = recvbuff.reshape(dim_global)
+
+            t_disp_start = time.time()
+            appli.draw(global_grid)
+            t_disp = time.time() - t_disp_start
+            t_total = time.time() - t1
+            print(f"[Rank 0] Total iter : {t_total:2.2e}s | Affichage : {t_disp:2.2e}s")
+
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    mustContinue = False
+        
+        #mustContinue = globCom.bcast(mustContinue, root=0) # communication globale de l'arrêt (fermeture fenêtre d'affichage)
     pg.quit()

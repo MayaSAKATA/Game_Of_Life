@@ -57,19 +57,21 @@ class Grille:
         """
         import random
 
-        ny = dim[0]
-        nx = dim[1]
-        ny_loc = ny // nbp  + (1 if ny % nbp > rank else 0)
-        y_start = ny_loc * rank + (ny%nbp if rank >= ny % nbp else 0)
-        self.dimensions = (ny_loc+2, nx) # on ajoute 2 lignes de cellules pour les échanges de bordures entre processus
+        ny, nx = dim
+        self.dimensions = (ny, nx) 
+        self.cells = np.zeros(self.dimensions, dtype=np.uint8)
+
 
         if init_pattern is not None:
+
             self.cells = np.zeros(self.dimensions, dtype=np.uint8)
-            indices_i = [(v[0] - y_start +1)%ny for v in init_pattern]
+            indices_i = [v[0] for v in init_pattern]
             indices_j = [v[1] for v in init_pattern]
-            for i, ind_i in enumerate(indices_i):
-                if ind_i >= 0 and ind_i <= ny_loc + 1:  # Vérifier que l'indice est dans les limites de la grille locale
-                    self.cells[ind_i, indices_j[i]] = 1  # Ajouter 1 pour tenir compte de la ligne de bordure ajoutée
+            self.cells[indices_i,indices_j] = 1
+            
+            # for v in init_pattern:
+            #     if 0 <= v[0] < ny and 0 <= v[1] < nx:
+            #         self.cells[v[0], v[1]] = 1
         else:
             self.cells = np.random.randint(2, size=dim, dtype=np.uint8)
         self.col_life = color_life
@@ -93,10 +95,20 @@ class Grille:
             for j in range(nx):
                 j_left = (j-1+nx)%nx
                 j_right= (j+1)%nx
-                voisins_i = [i_above,i_above,i_above, i     , i      , i_below, i_below, i_below]
-                voisins_j = [j_left ,j      ,j_right, j_left, j_right, j_left , j      , j_right]
-                voisines = np.array(self.cells[voisins_i,voisins_j])
-                nb_voisines_vivantes = np.sum(voisines)
+                
+                #version prof : utilisation d'un array qui ralentit le calcul :
+                
+                # voisins_i = [i_above,i_above,i_above, i     , i      , i_below, i_below, i_below]
+                # voisins_j = [j_left ,j      ,j_right, j_left, j_right, j_left , j      , j_right]
+                # voisines = np.array(self.cells[voisins_i,voisins_j])
+                # nb_voisines_vivantes = np.sum(voisines)
+
+                voisines = [
+                    self.cells[i_above, j_left], self.cells[i_above, j], self.cells[i_above, j_right],
+                    self.cells[i, j_left],                               self.cells[i, j_right],
+                    self.cells[i_below, j_left], self.cells[i_below, j], self.cells[i_below, j_right]
+                ]
+                nb_voisines_vivantes = sum(voisines)
                 if self.cells[i,j] == 1: # Si la cellule est vivante
                     if (nb_voisines_vivantes < 2) or (nb_voisines_vivantes > 3):
                         next_cells[i,j] = 0 # Cas de sous ou sur population, la cellule meurt
@@ -120,11 +132,9 @@ class App:
     """
     def __init__(self, geometry, grid):
         self.grid = grid
-        # Calcul de la taille d'une cellule par rapport à la taille de la fenêtre et de la grille à afficher :
-        ny_reel = grid.dimensions[0]-2
-
-        self.size_x = geometry[1]//grid.dimensions[1]
-        self.size_y = geometry[0]//ny_reel
+        ny, nx = grid.dimensions
+        self.size_x = geometry[1] // grid.dimensions[1]
+        self.size_y = geometry[0] // grid.dimensions[0]
 
         if self.size_x > 4 and self.size_y > 4 :
             self.draw_color=pg.Color('lightgrey')
@@ -132,11 +142,16 @@ class App:
             self.draw_color=None
         # Ajustement de la taille de la fenêtre pour bien fitter la dimension de la grille
         self.width = grid.dimensions[1] * self.size_x
-        self.height= ny_reel * self.size_y
+        self.height= grid.dimensions[0] * self.size_y
         # Création de la fenêtre à l'aide de tkinter
         self.screen = pg.display.set_mode((self.width,self.height))
         #
         self.canvas_cells = []
+
+        # self.width = nx * self.size_x
+        # self.height = ny * self.size_y
+        # self.screen = pg.display.set_mode((self.width, self.height))
+        # self.draw_color = pg.Color('lightgrey') if self.size_x > 4 else None
 
     def compute_rectangle(self, i: int, j: int):
         """
@@ -162,17 +177,18 @@ if __name__ == '__main__':
     import time
     import sys
 
-    # on spit en 2 : le rank 0 calcule les prochaines générations, les autres affichent la grille à l'écran
-    key = rank
-    color = 1
-    subCom = globCom.Split(color, key)
-    subCom.Set_name(f"groupe affichage")
-    if rank == 0:
-        color = 0
-        subCom.Set_name(f"groupe calcul")
-    #print(f'subCom {subCom.Get_name()} contains {subCom.size} ranks') # ça marche pas
+    # on split en 2 : le rank 0 calcule les prochaines générations, les autres affichent la grille à l'écran
+    if rank == 0 : # calcule
+        color = 0 
+    elif rank == 1 : #affiche
+        color = 1 
+    else : # les autres processus ne font rien
+        color = 2
 
-    pg.init()
+    subCom = globCom.Split(color, rank)
+
+    #pg.init()
+    
     dico_patterns = { # Dimension et pattern dans un tuple
         'blinker' : ((5,5),[(2,1),(2,2),(2,3)]),
         'toad'    : ((6,6),[(2,2),(2,3),(2,4),(3,3),(3,4),(3,5)]),
@@ -206,22 +222,32 @@ if __name__ == '__main__':
         exit(1)
     
     dimension, pattern = init_pattern
-    grid = Grille(dimension, nbp = nbp, rank = rank, init_pattern=pattern) # initialisation de la grille à partir du pattern choisi
+    grid = Grille(dimension, init_pattern=pattern)
     
     # Seuls ceux qui affichent (color == 1) créent la fenêtre
     if color == 1:
+        pg.init()
         appli = App((resx, resy), grid)
+        appli.draw() #changement pour eviter que le premier dessin reste afficher tout le temps 
 
     mustContinue = True
     while mustContinue:
-        #time.sleep(0.5) # A régler ou commenter pour vitesse maxi
         t1 = time.time()
         if color == 0:
+            t_calc_start = time.time()
             diff = grid.compute_next_iteration()
-            for r in range(1, nbp):
-                globCom.send(diff, dest=r, tag=11)
-            t2 = time.time()
-        else :
+            t_calc_end = time.time()
+            if nbp > 1:
+                globCom.send(diff, dest=1, tag=11)
+                t_disp = globCom.recv(source=1, tag=22)  # attendre que l'affichage soit terminé ET récupérer le temps d'affichage
+            print(f"[Rank 0] Calcul : {t_calc_end - t_calc_start:2.2e}s | Affichage : {t_disp:2.2e}s") # que le rang 0 qui écrit dans le terminal
+
+        if color == 1:
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    mustContinue = False
+                    globCom.Abort()
+            t_disp_start = time.time()
             diff = globCom.recv(source=0, tag=11)
             nx = grid.dimensions[1]
             for d in diff:
@@ -229,9 +255,7 @@ if __name__ == '__main__':
                 j = d%nx
                 grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
             appli.draw()
-            t3 = time.time()
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                mustContinue = False
-        #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
+            t_disp_end = time.time()
+            globCom.send(t_disp_end - t_disp_start, dest=0, tag=22) # affichage terminé et renvoyer le temps d'affichage
+        
     pg.quit()

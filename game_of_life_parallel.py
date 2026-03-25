@@ -183,9 +183,10 @@ if __name__ == '__main__':
         #time.sleep(0.5) # A régler ou commenter pour vitesse maxi
         t1 = time.time()
         if rank == 0:
+            t_calc_start = time.time()
             diff = grid.compute_next_iteration()
             globCom.send(diff, dest=1, tag=11)
-            t2 = time.time()
+            t_calc_end = time.time()
         if rank == 1 :
             diff = globCom.recv(source=0, tag=11)
             nx = grid.dimensions[1]
@@ -193,10 +194,17 @@ if __name__ == '__main__':
                 i = d//nx
                 j = d%nx
                 grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
+            t_aff_start = time.time()
             appli.draw()
-            t3 = time.time()
+            t_aff_end = time.time()
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 mustContinue = False
+        
+        if rank == 0:
+            print(f"[Rank 0] Temps calcul : {t_calc_end - t_calc_start:2.2e} secondes")
+
+        if rank == 1:
+            print(f"[Rank 1] Temps affichage : {t_aff_end - t_aff_start:2.2e} secondes")
         #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
     pg.quit()
