@@ -34,7 +34,6 @@ nbp     = globCom.size
 rank    = globCom.rank
 name    = MPI.Get_processor_name()
 
-
 class Grille:
     """
     Grille torique décrivant l'automate cellulaire.
@@ -139,16 +138,13 @@ if __name__ == '__main__':
     import time
     import sys
 
-
-    if rank == 0 : 
+    if rank == 0 :
         color = 0 
     else : 
         color = 1 
 
     subCom= globCom.Split(color,rank)
 
-
-    pg.init()
     dico_patterns = { # Dimension et pattern dans un tuple
         'blinker' : ((5,5),[(2,1),(2,2),(2,3)]),
         'toad'    : ((6,6),[(2,2),(2,3),(2,4),(3,3),(3,4),(3,5)]),
@@ -181,19 +177,14 @@ if __name__ == '__main__':
         print("No such pattern. Available ones are:", dico_patterns.keys())
         exit(1)
 
-
-
     dimension, pattern = init_pattern
-
     ny, nx = dimension 
-
     grid = Grille(dimension, init_pattern=pattern)
-
 
     if color == 0 : 
         n_calc = subCom.size 
         r_calc = subCom.rank
-        #decoupage des lignes 
+        # découpage des lignes 
         rows_per_process = ny//n_calc
         i_start = r_calc*rows_per_process
         if r_calc != n_calc - 1 : 
@@ -211,7 +202,6 @@ if __name__ == '__main__':
 
     mustContinue = True
     while mustContinue:
-        #time.sleep(0.5) # A régler ou commenter pour vitesse maxi
         t1 = time.time()
         if color == 0:
             # Ghost Cells
@@ -229,7 +219,6 @@ if __name__ == '__main__':
             local_slice = np.vstack([ghost_up, my_cells, ghost_down])
             my_cells = grid.compute_next_iteration(local_slice)
 
-
             all_cells = None
             if subCom.rank == 0: 
                 all_cells = np.empty((ny, nx), dtype=np.uint8)
@@ -241,7 +230,7 @@ if __name__ == '__main__':
             
             subCom.Gatherv(my_cells, [all_cells, counts, displs, MPI.UNSIGNED_CHAR], root=0)
 
-            #envoie pour affichage 
+            # envoi pour affichage 
             if subCom.rank == 0:
                 globCom.Send(all_cells, dest=nbp-1, tag=11)
 

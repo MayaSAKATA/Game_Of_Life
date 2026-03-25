@@ -180,7 +180,6 @@ if __name__ == '__main__':
 
     mustContinue = True
     while mustContinue:
-        #time.sleep(0.5) # A régler ou commenter pour vitesse maxi
         t1 = time.time()
         if rank == 0:
             diff = grid.compute_next_iteration()
