@@ -233,7 +233,7 @@ if __name__ == '__main__':
     dim_global = init_pattern[0]
     init_coord = init_pattern[1]
 
-    # --- Padding pour rendre le nombre de lignes divisible par nbp ---
+    # Padding pour rendre le nombre de lignes divisible par nbp
     extra = dim_global[0] % nbp
     if extra != 0:
         pad = nbp - extra
@@ -243,7 +243,7 @@ if __name__ == '__main__':
         dim_global = (dim_global[0] + pad, dim_global[1])
         # On filtre le pattern pour éviter d'avoir des coordonnées hors grille
         init_coord = [(i, j) for (i, j) in init_coord if i < dim_global[0]]
-    # ----------------------------------------------------------------
+
 
     grid = Grille(dim=dim_global, init_pattern=init_coord)
     
