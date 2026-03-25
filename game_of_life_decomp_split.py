@@ -78,7 +78,7 @@ class Grille:
                 j_left = (j-1+nx)%nx
                 j_right= (j+1)%nx
 
-                #somme des 8 voisins dans la tranche 
+                # Somme des 8 voisins dans la tranche 
                 nb_voisines_vivantes = (
                     my_slice[i_above, j_left] + my_slice[i_above, j] + my_slice[i_above, j_right] +
                     my_slice[i, j_left]                             + my_slice[i, j_right] +
@@ -89,8 +89,7 @@ class Grille:
                 else:
                     next_cells[i-1,j] = 1 if nb_voisines_vivantes == 3 else 0
         return next_cells
-
-
+    
 class App:
     """
     Cette classe décrit la fenêtre affichant la grille à l'écran
@@ -132,7 +131,6 @@ class App:
             [pg.draw.line(self.screen, self.draw_color, (0,i*self.size_y), (self.width,i*self.size_y)) for i in range(self.grid.dimensions[0])]
             [pg.draw.line(self.screen, self.draw_color, (j*self.size_x,0), (j*self.size_x,self.height)) for j in range(self.grid.dimensions[1])]
         pg.display.update()
-
 
 if __name__ == '__main__':
     import time
@@ -184,7 +182,7 @@ if __name__ == '__main__':
     if color == 0 : 
         n_calc = subCom.size 
         r_calc = subCom.rank
-        # découpage des lignes 
+        # Découpage des lignes 
         rows_per_process = ny//n_calc
         i_start = r_calc*rows_per_process
         if r_calc != n_calc - 1 : 
@@ -223,14 +221,14 @@ if __name__ == '__main__':
             if subCom.rank == 0: 
                 all_cells = np.empty((ny, nx), dtype=np.uint8)
             
-            # pour Gatherv
+            # Gatherv
             counts = [(ny // n_calc) * nx] * n_calc
             counts[-1] = (ny - (n_calc-1)*(ny // n_calc)) * nx
             displs = [sum(counts[:i]) for i in range(n_calc)]
             
             subCom.Gatherv(my_cells, [all_cells, counts, displs, MPI.UNSIGNED_CHAR], root=0)
 
-            # envoi pour affichage 
+            # Envoi pour affichage 
             if subCom.rank == 0:
                 globCom.Send(all_cells, dest=nbp-1, tag=11)
 
