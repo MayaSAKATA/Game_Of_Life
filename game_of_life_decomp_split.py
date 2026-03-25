@@ -21,7 +21,9 @@ et inversement.
 
 On itère ensuite pour étudier la façon dont évolue la population des cellules sur la grille.
 
-Pour lancer le programme avec 4 processus : mpiexec -n 4 python3 game_of_life_split.py
+################
+Parallélisation du code game_of_life.py
+
 """
 import pygame  as pg
 import numpy   as np
@@ -45,83 +47,49 @@ class Grille:
     Exemple :
        grid = Grille( (10,10), init_pattern=[(2,2),(0,2),(4,2),(2,0),(2,4)], color_life=pg.Color("red"), color_dead=pg.Color("black"))
     """
-    def __init__(self, dim, nbp=1, rank=0, init_pattern=None, color_life=pg.Color("black"), color_dead=pg.Color("white")):
-        """
-        Initialisation de la grille à partir du pattern donné en entrée ou de manière aléatoire si aucun pattern n'est donné
-         - dim est un tuple contenant le nombre de cellules dans les deux directions (nombre lignes, nombre colonnes)
-         - nbp est le nombre de processus utilisés pour le calcul
-         - rank est le rang du processus courant
-         - init_pattern est une liste de cellules initialement vivantes sur cette grille (les autres sont considérées comme mortes)
-         - color_life est la couleur dans laquelle on affiche une cellule vivante
-         - color_dead est la couleur dans laquelle on affiche une cellule morte
-        """
+    def __init__(self, dim, init_pattern=None, color_life=pg.Color("black"), color_dead=pg.Color("white")):
         import random
-
-        ny, nx = dim
-        self.dimensions = (ny, nx) 
-        self.cells = np.zeros(self.dimensions, dtype=np.uint8)
-
-
+        self.dimensions = dim
         if init_pattern is not None:
-
             self.cells = np.zeros(self.dimensions, dtype=np.uint8)
             indices_i = [v[0] for v in init_pattern]
             indices_j = [v[1] for v in init_pattern]
             self.cells[indices_i,indices_j] = 1
-            
-            # for v in init_pattern:
-            #     if 0 <= v[0] < ny and 0 <= v[1] < nx:
-            #         self.cells[v[0], v[1]] = 1
         else:
             self.cells = np.random.randint(2, size=dim, dtype=np.uint8)
         self.col_life = color_life
         self.col_dead = color_dead
 
-
-    def compute_next_iteration(self):
+    def compute_next_iteration(self, my_slice):
         """
         Calcule la prochaine génération de cellules en suivant les règles du jeu de la vie
+        ajout des tranches pour que chaque processus ait acces uniquement a sa partie de la grille 
+        gain de memoire et de temps 
         """
         # Remarque 1: on pourrait optimiser en faisant du vectoriel, mais pour plus de clarté, on utilise les boucles
         # Remarque 2: on voit la grille plus comme une matrice qu'une grille géométrique. L'indice (0,0) est donc en bas
         #             à gauche de la grille !
-        ny = self.dimensions[0]
-        nx = self.dimensions[1]
-        next_cells = np.empty(self.dimensions, dtype=np.uint8)
-        diff_cells = []
-        for i in range(ny):
-            i_above = (i+ny-1)%ny
-            i_below = (i+1)%ny
+        ny_local, nx = my_slice.shape
+        next_cells = np.empty((ny_local-2,nx), dtype=np.uint8)
+    
+        for i in range(1,ny_local-1): 
+            i_above = i-1
+            i_below = i+1
             for j in range(nx):
                 j_left = (j-1+nx)%nx
                 j_right= (j+1)%nx
-                
-                #version prof : utilisation d'un array qui ralentit le calcul :
-                
-                # voisins_i = [i_above,i_above,i_above, i     , i      , i_below, i_below, i_below]
-                # voisins_j = [j_left ,j      ,j_right, j_left, j_right, j_left , j      , j_right]
-                # voisines = np.array(self.cells[voisins_i,voisins_j])
-                # nb_voisines_vivantes = np.sum(voisines)
 
-                voisines = [
-                    self.cells[i_above, j_left], self.cells[i_above, j], self.cells[i_above, j_right],
-                    self.cells[i, j_left],                               self.cells[i, j_right],
-                    self.cells[i_below, j_left], self.cells[i_below, j], self.cells[i_below, j_right]
-                ]
-                nb_voisines_vivantes = sum(voisines)
-                if self.cells[i,j] == 1: # Si la cellule est vivante
-                    if (nb_voisines_vivantes < 2) or (nb_voisines_vivantes > 3):
-                        next_cells[i,j] = 0 # Cas de sous ou sur population, la cellule meurt
-                        diff_cells.append(i*nx+j)
-                    else:
-                        next_cells[i,j] = 1 # Sinon elle reste vivante
-                elif nb_voisines_vivantes == 3: # Cas où cellule morte mais entourée exactement de trois vivantes
-                    next_cells[i,j] = 1         # Naissance de la cellule
-                    diff_cells.append(i*nx+j)
+                #somme des 8 voisins dans la tranche 
+                nb_voisines_vivantes = (
+                    my_slice[i_above, j_left] + my_slice[i_above, j] + my_slice[i_above, j_right] +
+                    my_slice[i, j_left]                             + my_slice[i, j_right] +
+                    my_slice[i_below, j_left] + my_slice[i_below, j] + my_slice[i_below, j_right]
+                )
+                if my_slice[i,j] == 1:
+                    next_cells[i-1,j] = 1 if 2 <= nb_voisines_vivantes <= 3 else 0
                 else:
-                    next_cells[i,j] = 0         # Morte, elle reste morte.
-        self.cells = next_cells
-        return diff_cells
+                    next_cells[i-1,j] = 1 if nb_voisines_vivantes == 3 else 0
+        return next_cells
 
 
 class App:
@@ -132,10 +100,9 @@ class App:
     """
     def __init__(self, geometry, grid):
         self.grid = grid
-        ny, nx = grid.dimensions
-        self.size_x = geometry[1] // grid.dimensions[1]
-        self.size_y = geometry[0] // grid.dimensions[0]
-
+        # Calcul de la taille d'une cellule par rapport à la taille de la fenêtre et de la grille à afficher :
+        self.size_x = geometry[1]//grid.dimensions[1]
+        self.size_y = geometry[0]//grid.dimensions[0]
         if self.size_x > 4 and self.size_y > 4 :
             self.draw_color=pg.Color('lightgrey')
         else:
@@ -147,11 +114,6 @@ class App:
         self.screen = pg.display.set_mode((self.width,self.height))
         #
         self.canvas_cells = []
-
-        # self.width = nx * self.size_x
-        # self.height = ny * self.size_y
-        # self.screen = pg.display.set_mode((self.width, self.height))
-        # self.draw_color = pg.Color('lightgrey') if self.size_x > 4 else None
 
     def compute_rectangle(self, i: int, j: int):
         """
@@ -177,17 +139,14 @@ if __name__ == '__main__':
     import time
     import sys
 
-    # on split en 2 : le rank 0 calcule les prochaines générations, les autres affichent la grille à l'écran
-    if rank == 0 : # calcule
-        color = 0 
-    elif rank == 1 : #affiche
-        color = 1 
-    else : # les autres processus ne font rien
-        color = 2
 
-    # color = 0 if rank == 0 else 1
-    subCom = globCom.Split(color, rank)
-    #print(f'subCom {subCom.Get_name()} contains {subCom.size} ranks') # ça marche pas
+    if rank == 0 : 
+        color = 0 
+    else : 
+        color = 1 
+
+    subCom= globCom.Split(color,rank)
+
 
     pg.init()
     dico_patterns = { # Dimension et pattern dans un tuple
@@ -221,45 +180,79 @@ if __name__ == '__main__':
     except KeyError:
         print("No such pattern. Available ones are:", dico_patterns.keys())
         exit(1)
-    
+
+
+
     dimension, pattern = init_pattern
+
+    ny, nx = dimension 
+
     grid = Grille(dimension, init_pattern=pattern)
-    
-    # Seuls ceux qui affichent (color == 1) créent la fenêtre
-    if color == 1:
+
+
+    if color == 0 : 
+        n_calc = subCom.size 
+        r_calc = subCom.rank
+        #decoupage des lignes 
+        rows_per_process = ny//n_calc
+        i_start = r_calc*rows_per_process
+        if r_calc != n_calc - 1 : 
+            i_end = (r_calc +1)*rows_per_process
+        else :
+            i_end = ny
+        my_ny = i_end-i_start 
+
+        my_cells = grid.cells[i_start:i_end,:].copy()
+
+    if color == 1 : 
         pg.init()
-        appli = App((resx, resy), grid)
-        appli.draw() #changement pour eviter que le premier dessin reste afficher tout le temps 
+        appli = App((resx,resy), grid)
+        appli.draw()
 
     mustContinue = True
     while mustContinue:
         #time.sleep(0.5) # A régler ou commenter pour vitesse maxi
         t1 = time.time()
         if color == 0:
-            t_calc_start = time.time()
-            diff = grid.compute_next_iteration()
-            t_calc_end = time.time()
-            #for r in range(1, nbp):
-            if nbp > 1:
-                globCom.send(diff, dest=1, tag=11)
-            # time.sleep(0.02)
-            print(f"[Rank 0] Temps calcul : {t_calc_end - t_calc_start:2.2e} secondes")
-
-        if color == 1:
-            t_disp_start = time.time()
-            diff = globCom.recv(source=0, tag=11)
-            nx = grid.dimensions[1]
-            for d in diff:
-                i = d//nx
-                j = d%nx
-                grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
-            appli.draw()
-            t_disp_end = time.time()
-            print(f"[Rank {rank}] Temps affichage : {t_disp_end - t_disp_start:2.2e} secondes")
+            # Ghost Cells
+            neighbor_up = (subCom.rank - 1 + subCom.size) % subCom.size
+            neighbor_down = (subCom.rank + 1) % subCom.size
             
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                mustContinue = False
-                globCom.Abort()
+            ghost_up = np.empty(nx, dtype=np.uint8)
+            ghost_down = np.empty(nx, dtype=np.uint8)
+            
+            # On envoie la ligne du haut au voisin du haut, et on reçoit du bas
+            subCom.Sendrecv(my_cells[0,:], dest=neighbor_up, recvbuf=ghost_down, source=neighbor_down)
+            # On envoie la ligne du bas au voisin du bas, et on reçoit du haut
+            subCom.Sendrecv(my_cells[-1,:], dest=neighbor_down, recvbuf=ghost_up, source=neighbor_up)
+            
+            local_slice = np.vstack([ghost_up, my_cells, ghost_down])
+            my_cells = grid.compute_next_iteration(local_slice)
+
+
+            all_cells = None
+            if subCom.rank == 0: 
+                all_cells = np.empty((ny, nx), dtype=np.uint8)
+            
+            # pour Gatherv
+            counts = [(ny // n_calc) * nx] * n_calc
+            counts[-1] = (ny - (n_calc-1)*(ny // n_calc)) * nx
+            displs = [sum(counts[:i]) for i in range(n_calc)]
+            
+            subCom.Gatherv(my_cells, [all_cells, counts, displs, MPI.UNSIGNED_CHAR], root=0)
+
+            #envoie pour affichage 
+            if subCom.rank == 0:
+                globCom.Send(all_cells, dest=nbp-1, tag=11)
+
+        else : 
+            globCom.Recv(grid.cells,source= 0, tag= 11)
+            appli.draw()
+
+        if color == 1 :
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    #mustContinue = False
+                    globCom.Abort()
         #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
     pg.quit()
