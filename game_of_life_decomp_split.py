@@ -78,7 +78,7 @@ class Grille:
                 j_left = (j-1+nx)%nx
                 j_right= (j+1)%nx
 
-                # Somme des 8 voisins dans la tranche 
+                #somme des 8 voisins dans la tranche 
                 nb_voisines_vivantes = (
                     my_slice[i_above, j_left] + my_slice[i_above, j] + my_slice[i_above, j_right] +
                     my_slice[i, j_left]                             + my_slice[i, j_right] +
@@ -136,13 +136,15 @@ if __name__ == '__main__':
     import time
     import sys
 
+    # Split : color = 0 pour l'affichage, color = 1 pour le calcul
     if rank == 0 :
         color = 0 
     else : 
         color = 1 
 
-    subCom= globCom.Split(color,rank)
+    subCom= globCom.Split(color,rank) # subCom est valide uniquement pour les ranks de calcul (rank > 0)
 
+    #pg.init()
     dico_patterns = { # Dimension et pattern dans un tuple
         'blinker' : ((5,5),[(2,1),(2,2),(2,3)]),
         'toad'    : ((6,6),[(2,2),(2,3),(2,4),(3,3),(3,4),(3,5)]),
@@ -167,8 +169,9 @@ if __name__ == '__main__':
     if len(sys.argv) > 3 :
         resx = int(sys.argv[2])
         resy = int(sys.argv[3])
-    print(f"Pattern initial choisi : {choice}")
-    print(f"resolution ecran : {resx,resy}")
+    if color == 0: # print dans le terminal uniquement pour rank = 0
+        print(f"Pattern initial choisi : {choice}")
+        print(f"resolution ecran : {resx,resy}")
     try:
         init_pattern = dico_patterns[choice]
     except KeyError:
@@ -179,21 +182,19 @@ if __name__ == '__main__':
     ny, nx = dimension 
     grid = Grille(dimension, init_pattern=pattern)
 
-    if color == 0 : 
-        n_calc = subCom.size 
-        r_calc = subCom.rank
+    if color == 1 : 
+        calc_size = subCom.size 
+        calc_rank = subCom.rank
         # Découpage des lignes 
-        rows_per_process = ny//n_calc
-        i_start = r_calc*rows_per_process
-        if r_calc != n_calc - 1 : 
-            i_end = (r_calc +1)*rows_per_process
+        rows_per_process = ny//calc_size
+        i_start = calc_rank*rows_per_process
+        if calc_rank != calc_size - 1 : 
+            i_end = (calc_rank +1)*rows_per_process
         else :
             i_end = ny
-        my_ny = i_end-i_start 
-
         my_cells = grid.cells[i_start:i_end,:].copy()
 
-    if color == 1 : 
+    if color == 0 :
         pg.init()
         appli = App((resx,resy), grid)
         appli.draw()
@@ -201,7 +202,7 @@ if __name__ == '__main__':
     mustContinue = True
     while mustContinue:
         t1 = time.time()
-        if color == 0:
+        if color == 1:
             # Ghost Cells
             neighbor_up = (subCom.rank - 1 + subCom.size) % subCom.size
             neighbor_down = (subCom.rank + 1) % subCom.size
@@ -222,21 +223,21 @@ if __name__ == '__main__':
                 all_cells = np.empty((ny, nx), dtype=np.uint8)
             
             # Gatherv
-            counts = [(ny // n_calc) * nx] * n_calc
-            counts[-1] = (ny - (n_calc-1)*(ny // n_calc)) * nx
-            displs = [sum(counts[:i]) for i in range(n_calc)]
+            counts = [(ny // calc_size) * nx] * calc_size
+            counts[-1] = (ny - (calc_size-1)*(ny // calc_size)) * nx
+            displs = [sum(counts[:i]) for i in range(calc_size)]
             
             subCom.Gatherv(my_cells, [all_cells, counts, displs, MPI.UNSIGNED_CHAR], root=0)
 
             # Envoi pour affichage 
             if subCom.rank == 0:
-                globCom.Send(all_cells, dest=nbp-1, tag=11)
+                globCom.Send(all_cells, dest=0, tag=11)
 
         else : 
-            globCom.Recv(grid.cells,source= 0, tag= 11)
+            globCom.Recv(grid.cells,source=1, tag= 11)
             appli.draw()
 
-        if color == 1 :
+        if color == 0 :
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     #mustContinue = False
