@@ -219,6 +219,18 @@ if __name__ == '__main__':
     
     dim_global = init_pattern[0]
     init_coord = init_pattern[1]
+
+    # Padding pour rendre le nombre de lignes divisible par nbp
+    extra = dim_global[0] % nbp
+    if extra != 0:
+        pad = nbp - extra
+        if rank == 0:
+            print(f"Ajout de {pad} lignes mortes pour rendre la grille divisible par {nbp} processus.")
+        # On augmente le nombre de lignes globales
+        dim_global = (dim_global[0] + pad, dim_global[1])
+        # On filtre le pattern pour éviter d'avoir des coordonnées hors grille
+        init_coord = [(i, j) for (i, j) in init_coord if i < dim_global[0]]
+
     grid = Grille(dim=dim_global, init_pattern=init_coord)
 
     if rank == 0 :
@@ -261,3 +273,7 @@ if __name__ == '__main__':
         
         #mustContinue = globCom.bcast(mustContinue, root=0) # communication globale de l'arrêt (fermeture fenêtre d'affichage)
     pg.quit()
+
+
+
+
