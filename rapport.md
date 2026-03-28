@@ -86,6 +86,10 @@ Sur une grille plus grande (400×400), les résultats sont nettement meilleurs. 
 
 ![Speedup glider_gun](speedup_glidergun.png)
 
+On peut voir une nette amélioration du speedup lorsque l'on compare avec la version de décomposition de domaine sans le split.
+
+![Speedup glider_gun](speedup_domain_decom_glidergun.png)
+
 ## Conclusion
 
 Ce projet nous a permis d'explorer différentes stratégies de parallélisation du jeu de la vie avec MPI. Nous sommes parties d'une implémentation séquentielle pour aboutir à une solution combinant décomposition de domaine et Split, offrant de bonnes performances sur des grilles de taille suffisante.
