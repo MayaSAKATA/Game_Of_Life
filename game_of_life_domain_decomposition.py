@@ -82,12 +82,11 @@ class Grille:
         # Remarque 2: on voit la grille plus comme une matrice qu'une grille géométrique. L'indice (0,0) est donc en bas à gauche de la grille !
         ny = self.dimensions_local[0]
         nx = self.dimensions_global[1] # dimensions_global[1]=dimensions_local[1] chaque ligne reste de la même longueur pour tous les processus
-        #next_cells = np.empty(self.dimensions_local, dtype=np.uint8)
         next_cells = np.empty((ny+2,nx), dtype=np.uint8) # +2 pour les ghost cells
         diff_cells = []
         for i in range(1, ny+1):
-            i_above = i-1  #(i+ny-1)%ny
-            i_below = i+1  #(i+1)%ny
+            i_above = i-1 
+            i_below = i+1  
             for j in range(nx):
                 j_left = (j-1+nx)%nx
                 j_right= (j+1)%nx
@@ -268,7 +267,6 @@ if __name__ == '__main__':
             appli.draw(global_grid)
             t3 = time.time()
             t_total = time.time() - t1
-            #print(f"[Rank 0] Total iter : {t_total:2.2e}s | Affichage : {t3-t2:2.2e}s")
 
             for event in pg.event.get():
                 if event.type == pg.QUIT:
