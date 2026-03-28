@@ -68,10 +68,7 @@ class Grille:
             indices_i = [v[0] for v in init_pattern]
             indices_j = [v[1] for v in init_pattern]
             self.cells[indices_i,indices_j] = 1
-            
-            # for v in init_pattern:
-            #     if 0 <= v[0] < ny and 0 <= v[1] < nx:
-            #         self.cells[v[0], v[1]] = 1
+      
         else:
             self.cells = np.random.randint(2, size=dim, dtype=np.uint8)
         self.col_life = color_life
@@ -146,10 +143,6 @@ class App:
         #
         self.canvas_cells = []
 
-        # self.width = nx * self.size_x
-        # self.height = ny * self.size_y
-        # self.screen = pg.display.set_mode((self.width, self.height))
-        # self.draw_color = pg.Color('lightgrey') if self.size_x > 4 else None
 
     def compute_rectangle(self, i: int, j: int):
         """
