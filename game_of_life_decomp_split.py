@@ -257,8 +257,8 @@ if __name__ == '__main__':
         if color == 0 :
             for event in pg.event.get():
                 if event.type == pg.QUIT:
-                    #mustContinue = False
-                    globCom.Abort()
+                    mustContinue = False
+                    globCom.Abort() # On arrête tous les processus en cas de fermeture de la fenêtre
     
     if color == 0:
         filename = f"timings_{nbp-1}procs.csv"  # nbp-1 car rank 0 = affichage

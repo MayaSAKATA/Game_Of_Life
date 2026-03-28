@@ -11,8 +11,10 @@ Le processus 0 s'occupe donc de l'affichage tandis que le processus 1 gère les 
 
 Pour 2 processus,
 
-- le temps de calcul pour chaque itération est environ $8.5\times10^{-2}$ secondes.
-- le temps d'affichage est environ $1.3\times10^{-2}$ secondes.
+- le temps de calcul pour chaque itération est environ $4.9\times10^{-2}$ secondes.
+- le temps d'affichage est environ $6.3\times10^{-3}$ secondes.
+
+Le calcul étant le goulot d'étranglement, la parallélisation a du sens. Distribuer le calcul sur plusieurs processus va réduire le temps total.
 
 ## Parallélisation avec Split  — *game_of_life_split_vf.py*
 
@@ -21,10 +23,10 @@ Nous avons parallélisé à l'aide de la fonction *Split* sur 2 processus comme 
 La différence clé par rapport à la première parallélisation est l'utilisation de MPI.COMM_WORLD.Split() pour créer deux sous-communicateurs distincts : un pour le calcul (color = 1) et un pour l'affichage (color = 0). Cette séparation permet une meilleure organisation des communications et prépare le terrain pour la décomposition de domaine multi-processus.
 Pour 2 processus,
 
-- le temps de calcul pour chaque itération est environ $8\times10^{-3}$ secondes.
-- le temps d'affichage est $1.2\times10^{-2}$ secondes.
+- le temps de calcul pour chaque itération est environ $1.4\times10^{-2}$ secondes.
+- le temps d'affichage est $2\times10^{-2}$ secondes.
 
-On observe une réduction du temps de calcul d'un facteur ~10 par rapport à la première parallélisation, ce qui s'explique par une gestion plus efficace des communications grâce au Split.
+On observe une réduction du temps de calcul par rapport à la première parallélisation, ce qui s'explique par une gestion plus efficace des communications grâce au Split.
 
 ## Parallélisation horizontale  — *game_of_life_domain_decomposition.py*
 
@@ -35,12 +37,12 @@ Voici les temps moyens pour chaque itération pour différents nombre de process
 
 | Nombre de processus | 2 | 4 | 8 |
 | --------------------- | --------- | ------ | ------- |
-| Durée d'une itération | $1.8\times10^{-2}$ | $1.15\times10^{-2}$ | $1.2\times10^{-2}$ |
-| Durée de l'affichage | $3.8\times10^{-3}$ | $3.6\times10^{-3}$ | $3.5\times10^{-3}$ |
+| Durée d'une itération | $2.4\times10^{-2}$ | $1.4\times10^{-2}$ | $1.4\times10^{-2}$ |
+| Durée de l'affichage | $5.9\times10^{-3}$ | $6.5\times10^{-3}$ | $9\times10^{-3}$ |
 
 On remarque que le temps diminue lorsque le nombre de processus augmente.
 
-## Combinaison de split avec la décomposition de domaine  — *game_of_life_domain_split.py*
+## Combinaison de split avec la décomposition de domaine  — *game_of_life_decomp_split.py*
 
 Une fois le split et la décomposition de domaine maîtrisée, nous avons combiné les deux méthodes. On choisit de découper les processus de la manière suivante :
 
@@ -85,6 +87,10 @@ Sur une petite grille (100×90), le speedup est satisfaisant jusqu'à 4 processu
 Sur une grille plus grande (400×400), les résultats sont nettement meilleurs. Le speedup reste quasi idéal jusqu'à 2 processus, puis décroche progressivement. Ce comportement est conforme à la loi d'Amdahl : la portion non parallélisable du programme (communications MPI, Gatherv, affichage) fixe une limite haute au speedup atteignable, quelle que soit la taille du problème. Néanmoins, avec une grille plus grande, chaque processus dispose de suffisamment de travail pour amortir le coût des communications, ce qui explique le meilleur comportement général par rapport au glider.
 
 ![Speedup glider_gun](speedup_glidergun.png)
+
+On peut voir une nette amélioration du speedup lorsque l'on compare avec la version de décomposition de domaine sans le split.
+
+![Speedup glider_gun](speedup_domain_decom_glidergun.png)
 
 ## Conclusion
 
