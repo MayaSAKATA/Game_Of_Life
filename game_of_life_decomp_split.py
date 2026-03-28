@@ -252,13 +252,13 @@ if __name__ == '__main__':
 
             next_frame_time = t1 + FRAME_DURATION  # t1 = début de cette itération
             globCom.Send(np.array([next_frame_time]), dest=1, tag=22)
+            print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\n", end='');
 
         if color == 0 :
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     #mustContinue = False
                     globCom.Abort()
-        #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
     
     if color == 0:
         filename = f"timings_{nbp-1}procs.csv"  # nbp-1 car rank 0 = affichage
