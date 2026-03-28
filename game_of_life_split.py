@@ -32,6 +32,7 @@ nbp     = globCom.size
 rank    = globCom.rank
 name    = MPI.Get_processor_name()
 
+
 class Grille:
     """
     Grille torique décrivant l'automate cellulaire.
@@ -59,6 +60,7 @@ class Grille:
         ny, nx = dim
         self.dimensions = (ny, nx) 
         self.cells = np.zeros(self.dimensions, dtype=np.uint8)
+
 
         if init_pattern is not None:
 
@@ -173,11 +175,11 @@ if __name__ == '__main__':
     import time
     import sys
 
-    # On split en 2 : le rang 0 affiche la grille, les autres calculent les prochaines générations
-    if rank == 0 : # Affiche
+    # On split en 2 : le rank 0 calcule les prochaines générations, les autres affichent la grille à l'écran
+    if rank == 0 : # Calcule
         color = 0 
-    else : # Calculent
-        color = 1
+    elif rank > 0 : # Affiche
+        color = 1 
 
     subCom = globCom.Split(color, rank)
     
@@ -216,8 +218,8 @@ if __name__ == '__main__':
     dimension, pattern = init_pattern
     grid = Grille(dimension, init_pattern=pattern)
     
-    # Seul celui qui affiche (color == 0) crée la fenêtre
-    if color == 0:
+    # Seuls ceux qui affichent (color == 1) créent la fenêtre
+    if color == 1:
         pg.init()
         appli = App((resx, resy), grid)
         appli.draw()
@@ -225,22 +227,22 @@ if __name__ == '__main__':
     mustContinue = True
     while mustContinue:
         t1 = time.time()
-        if color == 1:
+        if color == 0:
             t_calc_start = time.time()
             diff = grid.compute_next_iteration()
             t_calc_end = time.time()
             if nbp > 1:
-                globCom.send(diff, dest=0, tag=11)
-                t_disp = globCom.recv(source=0, tag=22)  # Attendre que l'affichage soit terminé ET récupérer le temps d'affichage
+                globCom.send(diff, dest=1, tag=11)
+                t_disp = globCom.recv(source=1, tag=22)  # Attendre que l'affichage soit terminé ET récupérer le temps d'affichage
             print(f"[Rank 0] Calcul : {t_calc_end - t_calc_start:2.2e}s | Affichage : {t_disp:2.2e}s") # Uniquement le rang 0 qui écrit dans le terminal
 
-        else:
+        if color == 1:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     mustContinue = False
                     globCom.Abort()
             t_disp_start = time.time()
-            diff = globCom.recv(source=1, tag=11)
+            diff = globCom.recv(source=0, tag=11)
             nx = grid.dimensions[1]
             for d in diff:
                 i = d//nx
@@ -248,7 +250,6 @@ if __name__ == '__main__':
                 grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
             appli.draw()
             t_disp_end = time.time()
-            globCom.send(t_disp_end - t_disp_start, dest=1, tag=22) # Affichage terminé et renvoyer le temps d'affichage
+            globCom.send(t_disp_end - t_disp_start, dest=0, tag=22) # Affichage terminé et renvoyer le temps d'affichage
         
-    if color == 0:
-        pg.quit()
+    pg.quit()
