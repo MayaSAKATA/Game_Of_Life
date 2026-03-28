@@ -6,8 +6,8 @@ La parallélisation se fait avec MPI et la commande d'exécution des programmes 
 
 ## Parallélisation sur 2 processus  — *game_of_life_parallel.py*
 
-Dans un premier temps, nous avons parallélise le fichier fourni sur 2 processus uniquement. Le processus 0 se charge de calculer la nouvelle génération et d'envoyer la liste des cellules modifiées au processus 1. Le processus 1 reçoit les modifications et s'occupe de mettre à jour localement la grille puis de l'afficher.
-Le processus 0 s'occupe donc du calcul tandis que le processus 1 gère l'affichage.
+Dans un premier temps, nous avons parallélise le fichier fourni sur 2 processus uniquement. Le processus 0 reçoit les modifications et s'occupe de mettre à jour localement la grille puis de l'afficher. Le processus 1 se charge de calculer la nouvelle génération et d'envoyer la liste des cellules modifiées au processus 0.
+Le processus 0 s'occupe donc de l'affichage tandis que le processus 1 gère les calculs.
 
 Pour 2 processus,
 
@@ -16,12 +16,15 @@ Pour 2 processus,
 
 ## Parallélisation avec Split  — *game_of_life_split_vf.py*
 
-Nous avons parallélisé à l'aide de la fonction *Split* sur 2 processus comme précédemment. Le processus 0 calcule toujours la nouvelle génération et envoie les cellules modifiées au processus 1, qui les reçoit et réalise la mise à jour de la grille et son affichage.
+Nous avons parallélisé à l'aide de la fonction *Split* sur 2 processus comme précédemment. Le processus 1 calcule toujours la nouvelle génération et envoie les cellules modifiées au processus 0, qui les reçoit et réalise la mise à jour de la grille et son affichage.
 
+La différence clé par rapport à la première parallélisation est l'utilisation de MPI.COMM_WORLD.Split() pour créer deux sous-communicateurs distincts : un pour le calcul (color = 1) et un pour l'affichage (color = 0). Cette séparation permet une meilleure organisation des communications et prépare le terrain pour la décomposition de domaine multi-processus.
 Pour 2 processus,
 
 - le temps de calcul pour chaque itération est environ $8\times10^{-3}$ secondes.
 - le temps d'affichage est $1.2\times10^{-2}$ secondes.
+
+On observe une réduction du temps de calcul d'un facteur ~10 par rapport à la première parallélisation, ce qui s'explique par une gestion plus efficace des communications grâce au Split.
 
 ## Parallélisation horizontale  — *game_of_life_domain_decomposition.py*
 
@@ -57,7 +60,7 @@ Ainsi, la durée de chaque itération est ancrée sur une référence temporelle
 
 ## Speedup en fonction du nombre de processus
 
-Avec le pattern glider :
+### Pattern glider grille (100×90)
 
 | nbp | Temps moy (s) | Speedup | Efficacité |
 | ---- | ----------------- | ------- | ------ |
@@ -66,10 +69,25 @@ Avec le pattern glider :
 | 4 | 1.1405e-02 | 2.59 | 64.8% |
 | 8 | 2.4167e-02 | 1.22 | 15.3% |
 
-## Comparaison des performances des différentes méthodes
+Sur une petite grille (100×90), le speedup est satisfaisant jusqu'à 4 processus avec une efficacité de 64.8%. Au-delà, les performances se dégradent fortement : à 8 processus, chaque processus ne traite que ~12 lignes, rendant le surcoût des communications MPI (ghost cells, Gatherv) disproportionné par rapport au calcul effectif.
 
-Les résultats du benchmark montrent que la parallélisation par décomposition de domaine apporte un gain significatif jusqu'à 4 processus, avec un speedup de 2.59x pour une efficacité de 64.8%.
+![Speedup glider_gun](speedup_glider.png)
 
-Au-delà, on observe une dégradation des performances : à 8 processus, le speedup chute à 1.22x et l'efficacité tombe à 15.3%. Ce phénomène s'explique par la taille limitée de la grille utilisée (100×90) : chaque processus ne traite que 12 lignes, ce qui rend le coût des communications MPI (synchronisation des ghost cells et Gather) disproportionné par rapport au temps de calcul pur.
+### Pattern glider_gun (grille 400×400)
 
-On retrouve ici la loi d'Amdahl, qui prédit que le speedup est limité par la fraction non parallélisable du programme (ici dominée par les communications). Le point optimal se situe donc à 4 processus pour cette configuration, et l'on peut s'attendre à de meilleures performances avec 8 processus sur une grille plus grande.
+| nbp | Temps moy (s) | Speedup | Efficacité |
+| ---- | ----------------- | ------- | ------ |
+| 1 | x | x | 100.0% |
+| 2 | x | x | % |
+| 4 | x | x | % |
+| 8 | x | x | % |
+
+Sur une grille plus grande (400×400), les résultats sont nettement meilleurs. Le speedup reste quasi idéal jusqu'à 2 processus, puis décroche progressivement. Ce comportement est conforme à la loi d'Amdahl : la portion non parallélisable du programme (communications MPI, Gatherv, affichage) fixe une limite haute au speedup atteignable, quelle que soit la taille du problème. Néanmoins, avec une grille plus grande, chaque processus dispose de suffisamment de travail pour amortir le coût des communications, ce qui explique le meilleur comportement général par rapport au glider.
+
+![Speedup glider_gun](speedup_glidergun.png)
+
+## Conclusion
+
+Ce projet nous a permis d'explorer différentes stratégies de parallélisation du jeu de la vie avec MPI. Nous sommes parties d'une implémentation séquentielle pour aboutir à une solution combinant décomposition de domaine et Split, offrant de bonnes performances sur des grilles de taille suffisante.
+
+Les résultats montrent que l'efficacité de la parallélisation dépend fortement du rapport entre la taille du problème et le nombre de processus. Sur de petites grilles, le surcoût des communications MPI domine rapidement et annule le bénéfice de l'ajout de processus. Sur de grandes grilles en revanche, le speedup reste significatif jusqu'à 5-6 processus avant de saturer, conformément aux prédictions de la loi d'Amdahl.
