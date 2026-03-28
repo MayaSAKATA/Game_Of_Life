@@ -238,6 +238,7 @@ if __name__ == '__main__':
         appli = App((resx, resy), grid)
     
     mustContinue = True
+    timings = []  # Liste pour stocker les durées
     N_ITER_BENCHMARK = 200
     iter_count = 0
     while mustContinue:
@@ -261,19 +262,24 @@ if __name__ == '__main__':
         if rank == 0:
             global_grid = recvbuff.reshape(dim_global)
 
-            t_disp_start = time.time()
+            t2 = time.time()
+            timings.append(t2 - t1) # On stocke le temps de calcul + transfert pour cette itération
+
             appli.draw(global_grid)
-            t_disp = time.time() - t_disp_start
+            t3 = time.time()
             t_total = time.time() - t1
-            print(f"[Rank 0] Total iter : {t_total:2.2e}s | Affichage : {t_disp:2.2e}s")
+            #print(f"[Rank 0] Total iter : {t_total:2.2e}s | Affichage : {t3-t2:2.2e}s")
 
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     mustContinue = False
+                    globCom.Abort() # On arrête tous les processus en cas de fermeture de la fenêtre
         
-        #mustContinue = globCom.bcast(mustContinue, root=0) # communication globale de l'arrêt (fermeture fenêtre d'affichage)
-    pg.quit()
+    if rank == 0:
+        filename = f"timings_domain_decom_{nbp-1}procs.csv"  # nbp-1 car rank 0 = affichage
+        with open(filename, "w") as f:
+            f.write("nbp,iteration,calc_transfer_s\n")
+            for i, tc in enumerate(timings):
+                f.write(f"{nbp-1},{i},{tc:.6f}\n")
 
-
-
-
+        pg.quit()
