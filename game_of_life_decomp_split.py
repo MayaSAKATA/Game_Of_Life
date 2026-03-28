@@ -47,7 +47,6 @@ class Grille:
        grid = Grille( (10,10), init_pattern=[(2,2),(0,2),(4,2),(2,0),(2,4)], color_life=pg.Color("red"), color_dead=pg.Color("black"))
     """
     def __init__(self, dim, init_pattern=None, color_life=pg.Color("black"), color_dead=pg.Color("white")):
-        import random
         self.dimensions = dim
         if init_pattern is not None:
             self.cells = np.zeros(self.dimensions, dtype=np.uint8)
@@ -66,8 +65,7 @@ class Grille:
         gain de memoire et de temps 
         """
         # Remarque 1: on pourrait optimiser en faisant du vectoriel, mais pour plus de clarté, on utilise les boucles
-        # Remarque 2: on voit la grille plus comme une matrice qu'une grille géométrique. L'indice (0,0) est donc en bas
-        #             à gauche de la grille !
+        # Remarque 2: on voit la grille plus comme une matrice qu'une grille géométrique. L'indice (0,0) est donc en bas à gauche de la grille !
         ny_local, nx = my_slice.shape
         next_cells = np.empty((ny_local-2,nx), dtype=np.uint8)
     
@@ -78,7 +76,7 @@ class Grille:
                 j_left = (j-1+nx)%nx
                 j_right= (j+1)%nx
 
-                #somme des 8 voisins dans la tranche 
+                # Somme des 8 voisins dans la tranche 
                 nb_voisines_vivantes = (
                     my_slice[i_above, j_left] + my_slice[i_above, j] + my_slice[i_above, j_right] +
                     my_slice[i, j_left]                             + my_slice[i, j_right] +
@@ -110,7 +108,6 @@ class App:
         self.height= grid.dimensions[0] * self.size_y
         # Création de la fenêtre à l'aide de tkinter
         self.screen = pg.display.set_mode((self.width,self.height))
-        #
         self.canvas_cells = []
 
     def compute_rectangle(self, i: int, j: int):
@@ -144,7 +141,6 @@ if __name__ == '__main__':
 
     subCom= globCom.Split(color,rank) # subCom est valide uniquement pour les ranks de calcul (rank > 0)
 
-    #pg.init()
     dico_patterns = { # Dimension et pattern dans un tuple
         'blinker' : ((5,5),[(2,1),(2,2),(2,3)]),
         'toad'    : ((6,6),[(2,2),(2,3),(2,4),(3,3),(3,4),(3,5)]),
@@ -169,7 +165,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 3 :
         resx = int(sys.argv[2])
         resy = int(sys.argv[3])
-    if color == 0: # print dans le terminal uniquement pour rank = 0
+    if color == 0: # Print dans le terminal uniquement pour rank = 0
         print(f"Pattern initial choisi : {choice}")
         print(f"resolution ecran : {resx,resy}")
     try:
@@ -200,7 +196,16 @@ if __name__ == '__main__':
         appli.draw()
 
     mustContinue = True
+    timings = []  # Liste pour stocker les durées
+
+    N_ITER_BENCHMARK = 200
+    TARGET_FPS = 20
+    FRAME_DURATION = 1.0 / TARGET_FPS
+    iter_count = 0
     while mustContinue:
+        iter_count += 1
+        if iter_count >= N_ITER_BENCHMARK:
+            break
         t1 = time.time()
         if color == 1:
             # Ghost Cells
@@ -210,10 +215,10 @@ if __name__ == '__main__':
             ghost_up = np.empty(nx, dtype=np.uint8)
             ghost_down = np.empty(nx, dtype=np.uint8)
             
-            # On envoie la ligne du haut au voisin du haut, et on reçoit du bas
-            subCom.Sendrecv(my_cells[0,:], dest=neighbor_up, recvbuf=ghost_down, source=neighbor_down)
             # On envoie la ligne du bas au voisin du bas, et on reçoit du haut
             subCom.Sendrecv(my_cells[-1,:], dest=neighbor_down, recvbuf=ghost_up, source=neighbor_up)
+            # On envoie la ligne du haut au voisin du haut, et on reçoit du bas
+            subCom.Sendrecv(my_cells[0,:], dest=neighbor_up, recvbuf=ghost_down, source=neighbor_down)
             
             local_slice = np.vstack([ghost_up, my_cells, ghost_down])
             my_cells = grid.compute_next_iteration(local_slice)
@@ -231,11 +236,22 @@ if __name__ == '__main__':
 
             # Envoi pour affichage 
             if subCom.rank == 0:
-                globCom.Send(all_cells, dest=0, tag=11)
+                next_frame_time = np.empty(1, dtype=np.float64)
+                globCom.Sendrecv(all_cells, dest=0, sendtag=11, recvbuf=next_frame_time, source=0, recvtag=22)
+                # Attendre le moment autorisé avant de repartir
+                sleep_time = next_frame_time[0] - time.time()
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
 
-        else : 
+        else :
             globCom.Recv(grid.cells,source=1, tag= 11)
+            t2 = time.time()
             appli.draw()
+            t3 = time.time()
+            timings.append(t2 - t1) # On stocke le temps de calcul + transfert pour cette itération
+
+            next_frame_time = t1 + FRAME_DURATION  # t1 = début de cette itération
+            globCom.Send(np.array([next_frame_time]), dest=1, tag=22)
 
         if color == 0 :
             for event in pg.event.get():
@@ -243,4 +259,12 @@ if __name__ == '__main__':
                     #mustContinue = False
                     globCom.Abort()
         #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
-    pg.quit()
+    
+    if color == 0:
+        filename = f"timings_{nbp-1}procs.csv"  # nbp-1 car rank 0 = affichage
+        with open(filename, "w") as f:
+            f.write("nbp,iteration,calc_transfer_s\n")
+            for i, tc in enumerate(timings):
+                f.write(f"{nbp-1},{i},{tc:.6f}\n")
+
+        pg.quit()
