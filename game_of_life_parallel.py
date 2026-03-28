@@ -34,7 +34,6 @@ nbp     = globCom.size
 rank    = globCom.rank
 name    = MPI.Get_processor_name()
 
-
 class Grille:
     """
     Grille torique décrivant l'automate cellulaire.
@@ -116,7 +115,6 @@ class App:
         self.height= grid.dimensions[0] * self.size_y
         # Création de la fenêtre à l'aide de tkinter
         self.screen = pg.display.set_mode((self.width,self.height))
-        #
         self.canvas_cells = []
 
     def compute_rectangle(self, i: int, j: int):
@@ -143,7 +141,6 @@ if __name__ == '__main__':
     import time
     import sys
 
-    pg.init()
     dico_patterns = { # Dimension et pattern dans un tuple
         'blinker' : ((5,5),[(2,1),(2,2),(2,3)]),
         'toad'    : ((6,6),[(2,2),(2,3),(2,4),(3,3),(3,4),(3,5)]),
@@ -175,20 +172,23 @@ if __name__ == '__main__':
     except KeyError:
         print("No such pattern. Available ones are:", dico_patterns.keys())
         exit(1)
-    grid = Grille(*init_pattern)
-    appli = App((resx, resy), grid)
 
+    grid = Grille(*init_pattern)
+    if rank == 0:
+        pg.init()
+        appli = App((resx, resy), grid)
+        appli.draw()
     mustContinue = True
     while mustContinue:
         #time.sleep(0.5) # A régler ou commenter pour vitesse maxi
         t1 = time.time()
-        if rank == 0:
+        if rank == 1:
             t_calc_start = time.time()
             diff = grid.compute_next_iteration()
-            globCom.send(diff, dest=1, tag=11)
+            globCom.send(diff, dest=0, tag=11)
             t_calc_end = time.time()
-        if rank == 1 :
-            diff = globCom.recv(source=0, tag=11)
+        if rank == 0 :
+            diff = globCom.recv(source=1, tag=11)
             nx = grid.dimensions[1]
             for d in diff:
                 i = d//nx
@@ -197,14 +197,14 @@ if __name__ == '__main__':
             t_aff_start = time.time()
             appli.draw()
             t_aff_end = time.time()
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                mustContinue = False
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    mustContinue = False
         
-        if rank == 0:
-            print(f"[Rank 0] Temps calcul : {t_calc_end - t_calc_start:2.2e} secondes")
-
         if rank == 1:
-            print(f"[Rank 1] Temps affichage : {t_aff_end - t_aff_start:2.2e} secondes")
+            print(f"[Rank 1] Temps calcul : {t_calc_end - t_calc_start:2.2e} secondes")
+        if rank == 0:
+            print(f"[Rank 0] Temps affichage : {t_aff_end - t_aff_start:2.2e} secondes")
         #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
-    pg.quit()
+    if rank == 0:
+        pg.quit()
