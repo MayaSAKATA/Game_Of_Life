@@ -2,7 +2,7 @@
 
 Ce projet vise à implémenter le jeu de la vie de manière parallèle. Pour cela, nous sommes parties du fichier *game_of_life.py* qui correspond au code qui réalise ce jeu de manière séquentielle.
 
-La parallélisation se fait avec MPI et la commande d'exécution des programmes est *mpiexec -n k python nom_fichier.py* en remplacant k par le nombre de processus souhaités.
+La parallélisation se fait avec MPI et la commande d'exécution des programmes est `mpiexec -n k python nom_fichier.py` en remplacant k par le nombre de processus souhaités.
 
 ## Parallélisation sur 2 processus  — *game_of_life_parallel.py*
 
@@ -36,6 +36,24 @@ Voici les temps moyens pour chaque itération pour différents nombre de process
 | Durée de l'affichage | $3.8\times10^{-3}$ | $3.6\times10^{-3}$ | $3.5\times10^{-3}$ |
 
 On remarque que le temps diminue lorsque le nombre de processus augmente.
+
+## Combinaison de split avec la décomposition de domaine  — *game_of_life_domain_split.py*
+
+Une fois le split et la décomposition de domaine maîtrisée, nous avons combiné les deux méthodes. On choisit de découper les processus de la manière suivante :
+
+- le processus 0 affiche, écrit dans le terminal et récupère les données de temps -> color = 0
+- les processus de 1 à nbp se chargent des calculs -> color = 1
+
+Dans une première approche, un `time.sleep()` de durée fixe a été introduit au début de la boucle principale afin de cadencer les itérations et obtenir une animation fluide.
+
+Cependant, cette méthode s'est révélée insuffisante pour deux raisons.
+
+- `time.sleep()` n'est pas précis : le système d'exploitation ne garantit qu'une durée minimale de sommeil, le réveil réel pouvant varier de plusieurs millisecondes selon la charge du scheduler.
+- Les processus de calcul et d'affichage appellent `time.sleep()` de manière indépendante. Leurs durées de sommeil dérivent l'une par rapport à l'autre, introduisant une attente variable à chaque itération.
+
+Pour résoudre ce problème, on intègre la cadence directement dans le mécanisme de synchronisation MPI existant. À la fin de chaque itération, le processus d'affichage calcule le timestamp absolu `t1 + FRAME_DURATION`, où `t1` est l'horodatage du début de l'itération courante, et transmet ce timestamp au processus de calcul dans le message d'acquittement. Le processus de calcul, après réception, attend que ce moment soit atteint avant de repartir pour l'itération suivante.
+
+Ainsi, la durée de chaque itération est ancrée sur une référence temporelle absolue commune aux deux processus : toute dérive accumulée lors d'une itération est automatiquement corrigée à la suivante, garantissant une vitesse d'animation constante et indépendante des aléas du système.
 
 ## Speedup en fonction du nombre de processus
 
