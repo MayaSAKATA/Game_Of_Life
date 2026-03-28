@@ -176,7 +176,7 @@ if __name__ == '__main__':
     # On split en 2 : le rang 0 affiche la grille, les autres calculent les prochaines générations
     if rank == 0 : # Affiche
         color = 0 
-    elif rank > 0 : # Calculent
+    else : # Calculent
         color = 1
 
     subCom = globCom.Split(color, rank)
@@ -216,7 +216,7 @@ if __name__ == '__main__':
     dimension, pattern = init_pattern
     grid = Grille(dimension, init_pattern=pattern)
     
-    # Seuls ceux qui affichent (color == 0) créent la fenêtre
+    # Seul celui qui affiche (color == 0) crée la fenêtre
     if color == 0:
         pg.init()
         appli = App((resx, resy), grid)
