@@ -198,14 +198,14 @@ if __name__ == '__main__':
     mustContinue = True
     timings = []  # Liste pour stocker les durées
 
-    N_ITER_BENCHMARK = 300
-    TARGET_FPS = 10
+    N_ITER_BENCHMARK = 200
+    TARGET_FPS = 20
     FRAME_DURATION = 1.0 / TARGET_FPS
     iter_count = 0
     while mustContinue:
-        # iter_count += 1
-        # if iter_count >= N_ITER_BENCHMARK:
-        #     break
+        iter_count += 1
+        if iter_count >= N_ITER_BENCHMARK:
+            break
         t1 = time.time()
         if color == 1:
             # Ghost Cells
@@ -243,13 +243,12 @@ if __name__ == '__main__':
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
-
         else :
             globCom.Recv(grid.cells,source=1, tag= 11)
             t2 = time.time()
             appli.draw()
             t3 = time.time()
-            timings.append((t2 - t1, t3 - t2))  # (durée calcul+transfert, durée affichage)
+            timings.append(t2 - t1) # On stocke le temps de calcul + transfert pour cette itération
 
             next_frame_time = t1 + FRAME_DURATION  # t1 = début de cette itération
             globCom.Send(np.array([next_frame_time]), dest=1, tag=22)
@@ -261,11 +260,11 @@ if __name__ == '__main__':
                     globCom.Abort()
         #print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
     
-    if color == 0 :
-    # Récupération des durées de calcul et d'affichage
-        with open("timings.csv", "w") as f:
-            f.write("iteration,calc_transfer_s,display_s\n")
-            for i, (tc, td) in enumerate(timings):
-                f.write(f"{i},{tc:.6f},{td:.6f}\n")
+    if color == 0:
+        filename = f"timings_{nbp-1}procs.csv"  # nbp-1 car rank 0 = affichage
+        with open(filename, "w") as f:
+            f.write("nbp,iteration,calc_transfer_s\n")
+            for i, tc in enumerate(timings):
+                f.write(f"{nbp-1},{i},{tc:.6f}\n")
 
         pg.quit()

@@ -1,46 +1,40 @@
-"""
-Calcule le speedup de domain_decomposition.py en fonction du nombre de processus.
-Lance simplement : python3 speedup.py
-"""
-import subprocess
-import re
+import glob
+import pandas as pd
+import matplotlib.pyplot as plt
 
-SCRIPT   = "game_of_life_domain_decomposition.py"
-PATTERN  = "glider"
-NBP_LIST = [1, 2, 4, 8]  # nombres de processus à tester
+# Lecture de tous les fichiers timings_Xprocs.csv
+files = glob.glob("timings_*procs.csv")
 
-def get_temps_moyen(nbp):
-    """Lance domain_decomp avec nbp processus et retourne le temps moyen par itération."""
-    result = subprocess.run(
-        ["mpiexec", "-n", str(nbp), "python3", SCRIPT, PATTERN],
-        capture_output=True, text=True
-    )
-    # On cherche tous les temps de calcul dans les prints de rank 0
-    # ex: "[Rank 0] Total iter : 1.23e-02s | Affichage : 4.56e-03s"
-    temps = re.findall(r"Total iter : ([\d.e+-]+)s", result.stdout)
-    if not temps:
-        print(f"  Aucun temps trouvé pour nbp={nbp}, stdout:")
-        print(result.stdout)
-        return None
-    temps = [float(t) for t in temps]
-    return sum(temps) / len(temps)  # moyenne sur toutes les itérations
+if not files:
+    print("Aucun fichier timings_*procs.csv trouvé.")
+    exit(1)
 
+# Calcul du temps moyen par configuration
+results = {}
+for f in files:
+    df = pd.read_csv(f)
+    nbp = df["nbp"].iloc[0]
+    results[nbp] = df["calc_transfer_s"].mean()
 
-if __name__ == '__main__':
-    print(f"\nBenchmark speedup — pattern: {PATTERN}")
-    print(f"{'nbp':<6} {'Temps moy (s)':<18} {'Speedup':<12} {'Efficacité'}")
-    print("-" * 50)
+# Tri par nombre de processus
+results = dict(sorted(results.items()))
+nbps = list(results.keys())
+times = list(results.values())
 
-    t_seq = None
-    for nbp in NBP_LIST:
-        print(f"  Lancement avec {nbp} processus...", end=" ", flush=True)
-        t = get_temps_moyen(nbp)
-        if t is None:
-            continue
-        if nbp == 1:
-            t_seq = t
-        speedup    = t_seq / t if t_seq else None
-        efficacite = speedup / nbp if speedup else None
-        print(f"\r{nbp:<6} {t:<18.4e} {speedup:<12.2f} {efficacite*100:.1f}%")
+# Référence = 1 processus de calcul
+t_ref = results[1]
+speedups = [t_ref / t for t in times]
 
-    print()
+# Tracé
+fig, ax = plt.subplots(figsize=(8, 5))
+ax.plot(nbps, speedups, marker='o', label="Speedup mesuré")
+ax.plot(nbps, nbps, linestyle='--', color='gray', label="Speedup idéal")
+ax.set_xlabel("Nombre de processus de calcul")
+ax.set_ylabel("Speedup")
+ax.set_title("Speedup du jeu de la vie en fonction du nombre de processus")
+ax.legend()
+ax.grid(True)
+plt.tight_layout()
+plt.savefig("speedup.png", dpi=150)
+plt.show()
+print("Graphique sauvegardé dans speedup.png")
