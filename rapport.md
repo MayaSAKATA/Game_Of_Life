@@ -42,7 +42,7 @@ Voici les temps moyens pour chaque itération pour différents nombre de process
 
 On remarque que le temps diminue lorsque le nombre de processus augmente.
 
-## Combinaison de split avec la décomposition de domaine  — *game_of_life_domain_split.py*
+## Combinaison de split avec la décomposition de domaine  — *game_of_life_decomp_split.py*
 
 Une fois le split et la décomposition de domaine maîtrisée, nous avons combiné les deux méthodes. On choisit de découper les processus de la manière suivante :
 
