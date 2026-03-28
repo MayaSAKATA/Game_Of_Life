@@ -262,10 +262,9 @@ if __name__ == '__main__':
             global_grid = recvbuff.reshape(dim_global)
 
             t2 = time.time()
-            timings.append(t2 - t1) # On stocke le temps de calcul + transfert pour cette itération
-
             appli.draw(global_grid)
             t3 = time.time()
+            timings.append((t2 - t1, t3 - t2))
             t_total = time.time() - t1
 
             for event in pg.event.get():
@@ -276,8 +275,8 @@ if __name__ == '__main__':
     if rank == 0:
         filename = f"timings_domain_decom_{nbp-1}procs.csv"  # nbp-1 car rank 0 = affichage
         with open(filename, "w") as f:
-            f.write("nbp,iteration,calc_transfer_s\n")
-            for i, tc in enumerate(timings):
-                f.write(f"{nbp-1},{i},{tc:.6f}\n")
+            f.write("nbp,iteration,calc_transfer_s,display_s\n")
+            for i, (tc, td) in enumerate(timings):
+                f.write(f"{nbp-1},{i},{tc:.6f},{td:.6f}\n")
 
         pg.quit()
