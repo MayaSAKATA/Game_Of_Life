@@ -66,12 +66,13 @@ Ainsi, la durée de chaque itération est ancrée sur une référence temporelle
 
 | nbp | Temps moy (s) | Speedup | Efficacité |
 | ---- | ----------------- | ------- | ------ |
-| 1 | 2.9581e-02 | 1.00 | 100.0% |
-| 2 | 1.7175e-02 | 1.72 | 86.1% |
-| 4 | 1.1405e-02 | 2.59 | 64.8% |
-| 8 | 2.4167e-02 | 1.22 | 15.3% |
+| 1 | 2.8813e-02 | 1.00 | 100.0% |
+| 2 | 2.6552e-02 | 1.09 | 54.26% |
+| 4 | 2.5877e-02 | 1.11 | 27.84% |
+| 7 | 2.5670e-02 | 1.12 | 16.03% |
 
-Sur une petite grille (100×90), le speedup est satisfaisant jusqu'à 4 processus avec une efficacité de 64.8%. Au-delà, les performances se dégradent fortement : à 8 processus, chaque processus ne traite que ~12 lignes, rendant le surcoût des communications MPI (ghost cells, Gatherv) disproportionné par rapport au calcul effectif.
+Sur une petite grille (100x90), le speedup est très limité dès le passage à 2 processus, avec une accélération de seulement 1.09 et une efficacité de 54.26%. Ensuite, les performances stagnent car avec 7 processus le speedup est seulement de 1.12.
+Cela peut s'expliquer par la taille du domaine, à 8 processus, chaque processus ne traite qu'environ 12 lignes, rendant le surcoût des communications MPI (ghost cells, Gatherv) disproportionné par rapport au calcul effectif.
 
 ![Speedup glider_gun](speedup_glider.png)
 
@@ -79,12 +80,13 @@ Sur une petite grille (100×90), le speedup est satisfaisant jusqu'à 4 processu
 
 | nbp | Temps moy (s) | Speedup | Efficacité |
 | ---- | ----------------- | ------- | ------ |
-| 1 | x | x | 100.0% |
-| 2 | x | x | % |
-| 4 | x | x | % |
-| 8 | x | x | % |
+| 1 | 1.2495e-01 | 1 | 100.0% |
+| 2 | 6.4776e-02 | 1.93 | 96.45% |
+| 4 | 4.2000e-02 | 2.98 | 74.38% |
+| 7 | 3.3147e-02 | 3.77 | 53.85% |
 
-Sur une grille plus grande (400×400), les résultats sont nettement meilleurs. Le speedup reste quasi idéal jusqu'à 2 processus, puis décroche progressivement. Ce comportement est conforme à la loi d'Amdahl : la portion non parallélisable du programme (communications MPI, Gatherv, affichage) fixe une limite haute au speedup atteignable, quelle que soit la taille du problème. Néanmoins, avec une grille plus grande, chaque processus dispose de suffisamment de travail pour amortir le coût des communications, ce qui explique le meilleur comportement général par rapport au glider.
+Sur une grille plus grande (400×400), les résultats sont nettement meilleurs. Le speedup reste quasi idéal jusqu'à 2 processus (1.93), avec une efficaceté de 96.45%. Bien que l'accélération décroche progressivement ensuite, elle atteint quand même 3.77 qui est une bien meilleure performance qu'avec la petite grille. 
+Ce comportement est conforme à la loi d'Amdahl : la portion non parallélisable du programme (communications MPI, Gatherv, affichage) fixe une limite haute au speedup atteignable, quelle que soit la taille du problème. Néanmoins, avec une grille plus grande, chaque processus dispose de suffisamment de travail pour amortir le coût des communications, ce qui explique le meilleur comportement général par rapport au glider.
 
 ![Speedup glider_gun](speedup_glidergun.png)
 
