@@ -169,9 +169,9 @@ if __name__ == '__main__':
     import sys
 
     # On split en 2 : le rank 0 calcule les prochaines générations, les autres affichent la grille à l'écran
-    if rank == 0 : # Calcule
-        color = 0 
-    elif rank > 0 : # Affiche
+    if rank == 0 : # Affiche
+        color = 0
+    else : # Calcul
         color = 1 
 
     subCom = globCom.Split(color, rank)
@@ -200,8 +200,9 @@ if __name__ == '__main__':
     if len(sys.argv) > 3 :
         resx = int(sys.argv[2])
         resy = int(sys.argv[3])
-    print(f"Pattern initial choisi : {choice}")
-    print(f"resolution ecran : {resx,resy}")
+    if color == 0:
+        print(f"Pattern initial choisi : {choice}")
+        print(f"resolution ecran : {resx,resy}")
     try:
         init_pattern = dico_patterns[choice]
     except KeyError:
@@ -212,7 +213,7 @@ if __name__ == '__main__':
     grid = Grille(dimension, init_pattern=pattern)
     
     # Seuls ceux qui affichent (color == 1) créent la fenêtre
-    if color == 1:
+    if color == 0:
         pg.init()
         appli = App((resx, resy), grid)
         appli.draw()
@@ -220,22 +221,22 @@ if __name__ == '__main__':
     mustContinue = True
     while mustContinue:
         t1 = time.time()
-        if color == 0:
+        if color == 1:
             t_calc_start = time.time()
             diff = grid.compute_next_iteration()
             t_calc_end = time.time()
             if nbp > 1:
-                globCom.send(diff, dest=1, tag=11)
-                t_disp = globCom.recv(source=1, tag=22)  # Attendre que l'affichage soit terminé ET récupérer le temps d'affichage
+                globCom.send(diff, dest=0, tag=11)
+                t_disp = globCom.recv(source=0, tag=22)  # Attendre que l'affichage soit terminé ET récupérer le temps d'affichage
             print(f"[Rank 0] Calcul : {t_calc_end - t_calc_start:2.2e}s | Affichage : {t_disp:2.2e}s") # Uniquement le rang 0 qui écrit dans le terminal
 
-        if color == 1:
+        else:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     mustContinue = False
                     globCom.Abort()
             t_disp_start = time.time()
-            diff = globCom.recv(source=0, tag=11)
+            diff = globCom.recv(source=1, tag=11)
             nx = grid.dimensions[1]
             for d in diff:
                 i = d//nx
@@ -243,6 +244,6 @@ if __name__ == '__main__':
                 grid.cells[i,j] = 1 - grid.cells[i,j] # Inversion de l'état de la cellule
             appli.draw()
             t_disp_end = time.time()
-            globCom.send(t_disp_end - t_disp_start, dest=0, tag=22) # Affichage terminé et renvoyer le temps d'affichage
-        
-    pg.quit()
+            globCom.send(t_disp_end - t_disp_start, dest=1, tag=22) # Affichage terminé et renvoyer le temps d'affichage
+    if color == 0:  
+        pg.quit()
