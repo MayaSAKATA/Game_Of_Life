@@ -16,7 +16,7 @@ Pour 2 processus,
 
 Le calcul étant le goulot d'étranglement, la parallélisation a du sens. Distribuer le calcul sur plusieurs processus va réduire le temps total.
 
-## Parallélisation avec Split  — *game_of_life_split_vf.py*
+## Parallélisation avec Split  — *game_of_life_split.py*
 
 Nous avons parallélisé à l'aide de la fonction *Split* sur 2 processus comme précédemment. Le processus 1 calcule toujours la nouvelle génération et envoie les cellules modifiées au processus 0, qui les reçoit et réalise la mise à jour de la grille et son affichage.
 
